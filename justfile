@@ -89,6 +89,15 @@ icm-hybrid CONTEXT_DIR *ARGS:
         {{ARGS}} \
         -p "/auto-validate --max-validations 2 Create hello.txt in the project root containing exactly the text hello"
 
+# ICM BENEFIT test — REAL SPEND on the workhorse pair (roughly one to a few dollars per arm).
+# One arm = fresh scratch repo + context dir: stage 1 builds a `ledger` package whose gate enforces
+# integer-cents amounts → commit → /icm-promote → role sessions reset → stage 2 asks for a dollars
+# CSV export without restating the cents rule. Run each arm, then compare the two report.json files.
+# Keys come from the environment: `set -a; source .env; set +a` first.
+#   just icm-benefit on     just icm-benefit off
+icm-benefit ARM *ARGS:
+    node tests/icm/benefit-test.mjs {{ARM}} {{ARGS}}
+
 # ICM contract tests — no pi needed (Node ≥ 22.18 runs the .ts directly).
 icm-test:
     node --test 'tests/icm/**/*.test.ts'
