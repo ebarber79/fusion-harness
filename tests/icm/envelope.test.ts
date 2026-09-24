@@ -161,6 +161,11 @@ describe("primitives", () => {
 			"password: hunter2hunter2",
 			"-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----",
 			"the keyboard token of appreciation is fine",
+			// Code is not a credential — a real gate.py was refused promotion for the first of these.
+			'key = e.split(":", 1)[0]',
+			'secret = os.environ["LEDGER_SECRET"]',
+			"sorted(xs, key=lambda e: e[0])",
+			"api_key = get_key()",
 		].join("\n");
 		const out = redactSecrets(input);
 		assert.ok(!out.includes("sk-proj-abcdefghijklmnopqrstuvwxyz0123456789"));
@@ -172,6 +177,7 @@ describe("primitives", () => {
 		assert.ok(!out.includes("MIIE"));
 		assert.ok(out.includes("OPENAI_API_KEY=[REDACTED]"));
 		assert.ok(out.includes("the keyboard token of appreciation is fine"));
+		for (const code of ['key = e.split(":", 1)[0]', 'secret = os.environ["LEDGER_SECRET"]', "sorted(xs, key=lambda e: e[0])", "api_key = get_key()"]) assert.ok(out.includes(code), `code line must survive: ${code}`);
 	});
 	it("excerpt collapses whitespace, caps length, and points at the artifact", () => {
 		assert.equal(excerpt("  a \n b  "), "a b");

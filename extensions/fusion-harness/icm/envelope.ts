@@ -237,7 +237,11 @@ export function redactSecrets(text: string): string {
 		.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED]")
 		.replace(/\bAIza[0-9A-Za-z_-]{30,}\b/g, "[REDACTED]")
 		.replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]{16,}/g, "$1 [REDACTED]")
-		.replace(/\b([A-Za-z_]*(?:key|token|secret|password|passwd)[A-Za-z_]*\s*[=:]\s*)["']?[^\s"']{6,}["']?/gi, "$1[REDACTED]");
+		// Generic `key=` / `token:` / `password =` pairs — only when the VALUE looks like a credential
+		// literal: a quoted string of 8+ chars, or a bare token of 12+ [A-Za-z0-9_+/=-] chars. Code
+		// such as `key = e.split(":", 1)[0]` or `secret = os.environ["X"]` is NOT a secret (a real
+		// gate.py was refused promotion for exactly that line).
+		.replace(/\b([A-Za-z_]*(?:key|token|secret|password|passwd)[A-Za-z_]*\s*[=:]\s*)(?:(["'])[^"'\s]{8,}\2|[A-Za-z0-9_+/=-]{12,})(?![A-Za-z0-9_+/=-])/gi, "$1[REDACTED]");
 }
 
 /** One-line excerpt of arbitrary text for `summary`: whitespace collapsed, capped, redacted. */

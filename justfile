@@ -93,10 +93,10 @@ icm-hybrid CONTEXT_DIR *ARGS:
 # One arm = fresh scratch repo + context dir: stage 1 builds a `ledger` package whose gate enforces
 # integer-cents amounts → commit → /icm-promote → role sessions reset → stage 2 asks for a dollars
 # CSV export without restating the cents rule. Run each arm, then compare the two report.json files.
-# Keys come from the environment: `set -a; source .env; set +a` first.
+# The recipe loads ./.env itself (ANTHROPIC_API_KEY, OPENAI_API_KEY).
 #   just icm-benefit on     just icm-benefit off
 icm-benefit ARM *ARGS:
-    node tests/icm/benefit-test.mjs {{ARM}} {{ARGS}}
+    set -a; [ -f .env ] && . ./.env; set +a; node tests/icm/benefit-test.mjs {{ARM}} {{ARGS}}
 
 # ICM contract tests — no pi needed (Node ≥ 22.18 runs the .ts directly).
 icm-test:

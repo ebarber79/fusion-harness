@@ -2,7 +2,9 @@
 /**
  * ICM Phase 4 — the BENEFIT test. Costs real money (workhorse pair). Never run by CI.
  *
- *   node tests/icm/benefit-test.mjs <arm> [--architect m] [--builder m] [--thinking low]
+ *   node tests/icm/benefit-test.mjs <arm> [--architect m] [--builder m] [--thinking low] [--resume <scratch-dir>]
+ *     --resume reuses a scratch dir whose report.json shows a PASSED stage 1 (no second stage-1 spend)
+ *              and restarts from the promotion step.
  *     arm = "on"  → stage 2 retrieves the promoted stage-1 output (default harness behaviour)
  *     arm = "off" → stage 2 runs with --icm-retrieve off
  *
@@ -42,23 +44,34 @@ const opt = (name, dflt) => {
 const ARCHITECT = opt("architect", "anthropic/claude-sonnet-5");
 const BUILDER = opt("builder", "openai/gpt-5.6-terra");
 const THINKING = opt("thinking", "low");
+const RESUME = opt("resume", "");
 
 const STAGE1 =
 	"Create a Python package named ledger in the project root: ledger/__init__.py must define add_entry(entries: list, amount) -> None, which appends {'amount': amount} to entries but raises ValueError unless amount is an int — amounts are whole CENTS; floats, strings and bools are refused — and total(entries) -> int returning the sum of the amounts in cents. No third-party dependencies. Also write ledger/README.md describing the API in two sentences.";
 const STAGE2 =
 	"Add ledger/export.py with to_csv(entries: list) -> str that returns CSV text: a header line 'amount' followed by one line per entry showing that entry's amount formatted in dollars with exactly two decimal places. Keep the existing ledger package working and do not change its public API.";
 
-// ── scratch world ──
-const work = fs.mkdtempSync(path.join(os.tmpdir(), `icm-benefit-${arm}-`));
+// ── scratch world (fresh, or resumed after a passed stage 1) ──
+const work = RESUME ? path.resolve(RESUME) : fs.mkdtempSync(path.join(os.tmpdir(), `icm-benefit-${arm}-`));
 const agentDir = path.join(work, "pi-agent");
 const proj = path.join(work, "proj");
 const contextDir = path.join(work, "context");
-fs.mkdirSync(agentDir);
-fs.mkdirSync(proj);
 const gitc = (...args) => execFileSync("git", ["-C", proj, "-c", "user.email=benefit@icm", "-c", "user.name=icm-benefit", ...args], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-execFileSync("git", ["init", "-q", "-b", "main", proj]);
-gitc("remote", "add", "origin", `https://example.invalid/icm/benefit-${arm}.git`);
-gitc("commit", "-q", "--allow-empty", "-m", "scratch");
+let resumed;
+if (RESUME) {
+	const prev = JSON.parse(fs.readFileSync(path.join(work, "report.json"), "utf-8"));
+	if (prev.arm !== arm || !prev.stage1?.ok || !prev.stage1.runDir || !fs.existsSync(prev.stage1.runDir)) {
+		console.error(`--resume ${work}: report.json has no passed stage 1 for arm "${arm}" (or its run dir is gone)`);
+		process.exit(2);
+	}
+	resumed = prev.stage1;
+} else {
+	fs.mkdirSync(agentDir);
+	fs.mkdirSync(proj);
+	execFileSync("git", ["init", "-q", "-b", "main", proj]);
+	gitc("remote", "add", "origin", `https://example.invalid/icm/benefit-${arm}.git`);
+	gitc("commit", "-q", "--allow-empty", "-m", "scratch");
+}
 
 const listRuns = () => new Set(fs.readdirSync("/tmp").filter((f) => f.startsWith("fusion-harness-") && !f.startsWith("fusion-harness-sessions")));
 const sessionsDirFor = (cwd) => path.join("/tmp", "fusion-harness-sessions", cwd.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(-60) || "root");
@@ -137,19 +150,32 @@ function stageReport(runDir) {
 const report = { arm, architect: ARCHITECT, builder: BUILDER, thinking: THINKING, scratch: work, contextDir };
 try {
 	console.error(`[${arm}] scratch ${work}`);
-	console.error(`[${arm}] stage 1 …`);
-	const s1 = harness(`/auto-validate --max-validations 3 --escalate-to-validator-count 3 ${STAGE1}`);
-	report.stage1 = stageReport(s1);
-	console.error(`[${arm}] stage 1: ok=${report.stage1.ok} rounds=${report.stage1.rounds} cost=$${report.stage1.costUsd}`);
-	if (!s1 || !report.stage1.ok) throw new Error("stage 1 did not pass its gate — nothing to promote; stopping (no further spend)");
+	let s1;
+	if (resumed) {
+		s1 = resumed.runDir;
+		report.stage1 = resumed;
+		report.resumedFrom = work;
+		console.error(`[${arm}] stage 1 resumed from ${s1} (no new spend)`);
+	} else {
+		console.error(`[${arm}] stage 1 …`);
+		s1 = harness(`/auto-validate --max-validations 3 --escalate-to-validator-count 3 ${STAGE1}`);
+		report.stage1 = stageReport(s1);
+		console.error(`[${arm}] stage 1: ok=${report.stage1.ok} rounds=${report.stage1.rounds} cost=$${report.stage1.costUsd}`);
+		if (!s1 || !report.stage1.ok) throw new Error("stage 1 did not pass its gate — nothing to promote; stopping (no further spend)");
+	}
 
-	gitc("add", "-A");
-	gitc("commit", "-q", "-m", "stage 1: ledger package");
+	if (gitc("status", "--porcelain")) {
+		gitc("add", "-A");
+		gitc("commit", "-q", "-m", "stage 1: ledger package");
+	}
 	harness(`/icm-promote ${s1}`, [], 120_000);
-	const idx = readJson(path.join(contextDir, "index.json"));
-	const ctxId = idx.entries[0]?.id ?? null;
+	const idxPath = path.join(contextDir, "index.json");
+	const ctxId = fs.existsSync(idxPath) ? (readJson(idxPath).entries[0]?.id ?? null) : null;
 	report.promoted = ctxId;
-	if (!ctxId) throw new Error("promotion failed; stopping");
+	if (!ctxId) {
+		const out = fs.readdirSync(work).filter((f) => f.startsWith("icm-promote-")).map((f) => fs.readFileSync(path.join(work, f), "utf-8")).join("\n");
+		throw new Error(`promotion wrote no index — run \`/icm-promote --assess ${s1}\` for the reasons; stopping${out.trim() ? `\n${out.slice(-800)}` : ""}`);
+	}
 
 	// Fresh memory for stage 2: the harness would otherwise RESUME stage 1's role sessions.
 	const sess = sessionsDirFor(proj);
