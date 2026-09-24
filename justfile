@@ -34,10 +34,13 @@ set dotenv-load := true
 #   /icm-promote [--assess] <run-dir> [--supersedes ctx_…] [--note text]
 #   /icm-context list [validated|superseded|rejected] | show <ctx_id> | retract <ctx_id> <reason>
 #   --icm-context-dir <dir>   (default $FUSION_ICM_CONTEXT_DIR or ~/.fusion/context)
+# and (Phase 4) promoted VALIDATED context is read back — deterministically, re-verified, labelled
+# with its commit's relation to this checkout — into the ARCHITECT/BUILDER/VALIDATOR prompts:
+#   --icm-retrieve on|off      (default on)      --icm-retrieve-max N   (1-20, default 5)
 # See ICM_IMPLEMENTATION_NOTES.md.
 #   just icm-test                    contract tests (schema, fixtures, primitives, emitter, handoffs, promotion)
 #   just icm-verify <run-dir>        validate one real run's envelopes, artifact hashes, gate claims
-#   just icm-mock-e2e                zero-cost end-to-end proof: /fusion + /auto-validate + /icm-promote on a scripted mock model
+#   just icm-mock-e2e                zero-cost end-to-end proof: /fusion + /auto-validate + /icm-promote, then a second pair of runs that must receive the promoted context (scripted mock model)
 
 # WORKHORSE tier — the cheap pair (sonnet-5 plans · terra builds + hosts). Use for testing.
 WORKHORSE_ARCHITECT := "anthropic/claude-sonnet-5"
@@ -66,9 +69,33 @@ fh-sota *ARGS:
         --architect-thinking xhigh --builder-thinking xhigh \
         {{ARGS}}
 
+# ICM hybrid check — ONE real model in the seat that matters, everything else free. The VALIDATOR
+# (architect seat) runs on the workhorse Anthropic model; the BUILDER is the scripted mock; retrieval
+# reads CONTEXT_DIR. Prerequisites: `just icm-mock-e2e` once (it leaves /tmp/icm-e2e-XXXX with a
+# promoted context dir, a scratch repo and a pi agent dir that knows the mock provider), and the mock
+# server up: `node tests/icm/mock-model-server.mjs 18081 &`. Run from the scratch repo:
+#   cd /tmp/icm-e2e-XXXX/proj && rm -f hello.txt && \
+#   PI_CODING_AGENT_DIR=/tmp/icm-e2e-XXXX/pi-agent just --justfile ~/fusion-harness/justfile icm-hybrid /tmp/icm-e2e-XXXX/context
+# Add `--icm-retrieve off` for the control. Costs a few cents per run (one validator call).
+# NOTE: the harness reuses ONE persistent architect session per project dir, so a second run in the
+# same scratch repo RESUMES the first run's session — a control run is only clean in a fresh scratch dir.
+
+# ICM hybrid check: real workhorse VALIDATOR + mock BUILDER, retrieval from CONTEXT_DIR (see the note above; costs cents).
+icm-hybrid CONTEXT_DIR *ARGS:
+    FUSION_ICM_CONTEXT_DIR={{CONTEXT_DIR}} pi -e {{justfile_directory()}}/extensions/fusion-harness/fusion-harness.ts \
+        --model mock/scripted \
+        --architect {{WORKHORSE_ARCHITECT}} --builder mock/scripted \
+        --architect-thinking low --builder-thinking off --child-timeout 240 \
+        {{ARGS}} \
+        -p "/auto-validate --max-validations 2 Create hello.txt in the project root containing exactly the text hello"
+
 # ICM contract tests — no pi needed (Node ≥ 22.18 runs the .ts directly).
 icm-test:
     node --test 'tests/icm/**/*.test.ts'
+
+# Every contract test: ICM (tests/icm/**) plus the gate helpers (tests/gate.test.ts). No pi needed.
+test:
+    node --test 'tests/**/*.test.ts'
 
 # Validate the ICM envelopes of one real run dir: schema, artifact hashes, cross-refs, expected kinds.
 icm-verify RUN_DIR:

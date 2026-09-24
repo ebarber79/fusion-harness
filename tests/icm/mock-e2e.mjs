@@ -17,7 +17,16 @@
  *          "# STRUCTURED GATE DIAGNOSTICS" with at least one numbered FAIL item.
  *   6. (Phase 3) promotes the gate-PASS /auto-validate run with `/icm-promote` into a scratch
  *      context dir, confirms the index holds exactly one validated output, and confirms the
- *      /fusion run is REFUSED (no independent evidence).
+ *      /fusion run is REFUSED (no independent evidence);
+ *   7. (Phase 4) advances the scratch repo by one commit, then runs `/auto-validate` and `/fusion`
+ *      AGAIN against that context dir and asserts, from the mock's log, that the VALIDATOR, the
+ *      round-1 BUILDER and both /fusion WORKERS received "# ICM PRIOR VALIDATED CONTEXT" naming the
+ *      promoted output and labelled `earlier-commit` — while the runs BEFORE the promotion carried
+ *      none — and that each second run's brief envelope records the retrieval;
+ *   8. (Phase 4 interoperability) the ARCHITECT/VALIDATOR and the BUILDER are two different model
+ *      identities (mock/scripted, mock/scripted-b); the envelopes one produced are consumed by the
+ *      other's role and by FUSION with no per-model adapter. (Same wire API — the mock speaks only
+ *      openai-completions; a second wire protocol is not exercised here.)
  * Exit 0 iff everything holds. Needs `pi` and `uv` on PATH. Proves plumbing, not model quality.
  */
 
@@ -30,7 +39,8 @@ const HERE = path.dirname(new URL(import.meta.url).pathname);
 const REPO = path.resolve(HERE, "..", "..");
 const EXT = path.join(REPO, "extensions", "fusion-harness", "fusion-harness.ts");
 const PORT = Number(process.env.MOCK_PORT ?? 18081);
-const MODEL = "mock/scripted";
+const MODEL_A = "mock/scripted"; // ARCHITECT / VALIDATOR / FUSION
+const MODEL_B = "mock/scripted-b"; // BUILDER — a second model identity, same scripted server
 
 let failures = 0;
 const pass = (m) => console.log(`PASS: ${m}`);
@@ -54,7 +64,10 @@ fs.writeFileSync(
 					baseUrl: `http://127.0.0.1:${PORT}/v1`,
 					api: "openai-completions",
 					apiKey: "mock",
-					models: [{ id: "scripted", name: "scripted mock", input: ["text"], contextWindow: 128000, maxTokens: 8192 }],
+					models: [
+						{ id: "scripted", name: "scripted mock", input: ["text"], contextWindow: 128000, maxTokens: 8192 },
+						{ id: "scripted-b", name: "scripted mock (b)", input: ["text"], contextWindow: 128000, maxTokens: 8192 },
+					],
 				},
 			},
 		},
@@ -62,8 +75,10 @@ fs.writeFileSync(
 		2,
 	),
 );
-execFileSync("git", ["init", "-q", proj]);
-execFileSync("git", ["-C", proj, "-c", "user.email=e2e@icm", "-c", "user.name=icm-e2e", "commit", "-q", "--allow-empty", "-m", "scratch"]);
+execFileSync("git", ["init", "-q", "-b", "main", proj]);
+execFileSync("git", ["-C", proj, "remote", "add", "origin", "https://example.invalid/icm/e2e-scratch.git"]); // a repository scope for retrieval; nothing is ever fetched
+const gitc = (...args) => execFileSync("git", ["-C", proj, "-c", "user.email=e2e@icm", "-c", "user.name=icm-e2e", ...args], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+gitc("commit", "-q", "--allow-empty", "-m", "scratch");
 const mockLog = path.join(work, "mock.log");
 
 // ── mock model ──
@@ -87,7 +102,7 @@ function harness(command, timeoutMs, extraEnv = {}) {
 	const before = listRuns();
 	const args = [
 		"-e", EXT,
-		"--model", MODEL, "--architect", MODEL, "--builder", MODEL,
+		"--model", MODEL_A, "--architect", MODEL_A, "--builder", MODEL_B,
 		"--architect-thinking", "off", "--builder-thinking", "off",
 		"--child-timeout", "120",
 		"-p", command,
@@ -98,7 +113,7 @@ function harness(command, timeoutMs, extraEnv = {}) {
 	} catch (e) {
 		fail(`pi exited non-zero for ${command}: ${String(e.stderr ?? e.message).slice(0, 400)}`);
 	}
-	fs.writeFileSync(path.join(work, `${command.split(" ")[0].slice(1)}.out`), out);
+	fs.writeFileSync(path.join(work, `${command.split(" ")[0].slice(1)}-${Date.now()}.out`), out);
 	const created = [...listRuns()].filter((d) => !before.has(d));
 	if (command.startsWith("/icm-")) {
 		if (created.length) fail(`${command} must not create a run dir, created ${created.join(", ")}`);
@@ -176,8 +191,58 @@ try {
 		else fail(`/fusion run was promoted; index has ${n} entries`);
 	}
 
+	// Phase 4 interoperability: two model identities produced the /fusion envelopes; FUSION consumed both.
+	if (fusionDir) {
+		const spec = JSON.parse(fs.readFileSync(path.join(fusionDir, "spec.json"), "utf-8"));
+		const build = JSON.parse(fs.readFileSync(path.join(fusionDir, "build.json"), "utf-8"));
+		if (spec.producer.model === MODEL_A && build.producer.model === MODEL_B) pass(`fusion envelopes come from two model identities (${MODEL_A} → spec, ${MODEL_B} → build) and FUSION consumed both without an adapter`);
+		else fail(`expected two producers, got spec=${spec.producer.model} build=${build.producer.model}`);
+	}
+
+	// Phase 4: a second pair of runs, AFTER the promotion and one commit later, must RECEIVE the promoted context.
+	const promotedId = fs.existsSync(path.join(contextDir, "index.json")) ? JSON.parse(fs.readFileSync(path.join(contextDir, "index.json"), "utf-8")).entries[0]?.id : undefined;
+	let avDir2;
+	let fusionDir2;
+	if (promotedId) {
+		gitc("add", "-A");
+		gitc("commit", "-q", "-m", "after first run"); // HEAD moves → the promoted entry is now an EARLIER commit
+		fs.rmSync(path.join(proj, "hello.txt"), { force: true });
+		avDir2 = harness("/auto-validate --max-validations 3 Create hello.txt in the project root containing exactly the text hello", 300_000, ctxEnv);
+		if (avDir2) verify(avDir2);
+		fusionDir2 = harness("/fusion Should we write unit tests?", 240_000, ctxEnv);
+		if (fusionDir2) verify(fusionDir2);
+		for (const [name, dir] of [["auto-validate", avDir2], ["fusion", fusionDir2]]) {
+			if (!dir) continue;
+			const brief = JSON.parse(fs.readFileSync(path.join(dir, "brief.json"), "utf-8"));
+			const line = brief.decisions.find((d) => d.startsWith("icm retrieval:"));
+			if (line?.includes(`1 validated context entry from ${contextDir}`) && line.includes(`${promotedId} (earlier-commit)`)) pass(`second /${name} brief records the retrieval: ${line}`);
+			else fail(`second /${name} brief decisions: ${JSON.stringify(brief.decisions)}`);
+		}
+	} else fail("no promoted id — Phase 4 runs skipped");
+
 	// What the consumers actually received, per the mock's own log.
 	const log = fs.existsSync(mockLog) ? fs.readFileSync(mockLog, "utf-8").trim().split("\n") : [];
+	const expectCtx = (label, line, want) => {
+		if (!line) return fail(`${label}: (not seen)`);
+		const ok = want ? line.includes(`context=true ids=${promotedId} compat=earlier-commit`) : line.includes("context=false ids= compat=");
+		(ok ? pass : fail)(`${label} ${want ? "carried the promoted context (earlier-commit)" : "carried no prior context (nothing promoted yet)"}: ${line}`);
+	};
+	const validators = log.filter((l) => l.startsWith("VALIDATOR "));
+	const round1s = log.filter((l) => l.startsWith("BUILDER round-1 "));
+	const workers = log.filter((l) => l.startsWith("WORKER "));
+	expectCtx("first VALIDATOR", validators[0], false);
+	expectCtx("first BUILDER round 1", round1s[0], false);
+	expectCtx("first /fusion ARCHITECT worker", workers.find((l) => l.includes("role=ARCHITECT")), false);
+	expectCtx("first /fusion BUILDER worker", workers.find((l) => l.includes("role=BUILDER")), false);
+	if (promotedId) {
+		expectCtx("second VALIDATOR", validators[1], true);
+		expectCtx("second BUILDER round 1", round1s[1], true);
+		expectCtx("second /fusion ARCHITECT worker", workers.filter((l) => l.includes("role=ARCHITECT"))[1], true);
+		expectCtx("second /fusion BUILDER worker", workers.filter((l) => l.includes("role=BUILDER"))[1], true);
+		const wb = workers.filter((l) => l.includes("role=BUILDER"))[1];
+		if (wb?.includes(`model=${MODEL_B}`)) pass(`the BUILDER worker that received the context is ${MODEL_B}, a different model identity from the ${MODEL_A} that produced/validated it`);
+		else fail(`builder worker model: ${wb}`);
+	}
 	const fusionLine = log.find((l) => l.startsWith("FUSION "));
 	if (fusionLine === "FUSION handoff=true files=spec.json,build.json") pass(`fuser prompt carried the ICM handoff block: ${fusionLine}`);
 	else fail(`fuser prompt lacked the handoff: ${fusionLine ?? "(no FUSION request seen)"}`);

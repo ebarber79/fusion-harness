@@ -19,61 +19,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
-import { createIcmRun, sha256Text } from "../../extensions/fusion-harness/icm/envelope.ts";
+import { sha256Text } from "../../extensions/fusion-harness/icm/envelope.ts";
 import { assessRun, CONTEXT_DIR_ENV, defaultContextDir, listContext, loadIndex, promoteRun, retractContext, showContext } from "../../extensions/fusion-harness/icm/promote.ts";
-
-const HERE = path.dirname(new URL(import.meta.url).pathname);
-const REPO = path.resolve(HERE, "..", "..");
-const readJson = (p: string) => JSON.parse(fs.readFileSync(p, "utf-8"));
-const tmpDir = (tag = "icm-promote-") => fs.mkdtempSync(path.join(os.tmpdir(), tag));
-const w = (dir: string, name: string, body: string) => fs.writeFileSync(path.join(dir, name), body);
-
-/** An /auto-validate-shaped run, as the harness writes it. `gatePass` controls the verdict. */
-async function autoValidateRun(opts: { gatePass?: boolean; builderReport?: string } = {}) {
-	const gatePass = opts.gatePass ?? true;
-	const runDir = tmpDir();
-	w(runDir, "prompt.md", "Create hello.txt containing hello");
-	w(runDir, "validator.md", "wrote the gate");
-	w(runDir, "gate.py", "print('PASS: ok')");
-	w(runDir, "gate-baseline.txt", "exit 1\n\nFAIL: hello.txt missing");
-	w(runDir, "builder-round-1.md", opts.builderReport ?? "Created hello.txt");
-	w(runDir, "gate-round-1.txt", gatePass ? "exit 0\n\nPASS: hello.txt contains hello" : "exit 1\n\nFAIL: hello.txt contains hi");
-	const icm = createIcmRun({ runDir, cwd: REPO, command: "auto-validate" });
-	await icm.emit("brief", { kind: "brief", producer: { role: "user", model: "human" }, summary: "Create hello.txt", requirements: ["Create hello.txt containing hello"], artifacts: [{ path: "prompt.md", type: "prompt" }] });
-	await icm.emit("spec", { kind: "spec", producer: { role: "validator", model: "mock/scripted" }, summary: "gate written", acceptance_criteria: ["gate.py exits 0"], artifacts: [{ path: "validator.md", type: "raw-report" }, { path: "gate.py", type: "gate-script" }, { path: "gate-baseline.txt", type: "gate-output" }] });
-	const b = await icm.emit("build-round-1", { kind: "build", producer: { role: "builder", model: "mock/scripted" }, summary: "built", artifacts: [{ path: "builder-round-1.md", type: "raw-report" }] });
-	const v = await icm.emit("validation-round-1", {
-		kind: "validation",
-		producer: { role: "validator", model: "mock/scripted" },
-		summary: gatePass ? "PASS" : "FAIL",
-		claims: [
-			{ statement: "The acceptance gate passed.", status: gatePass ? "validated" : "rejected", source_role: "validator", evidence: ["artifact:gate-round-1.txt", "artifact:gate.py", `envelope:${b.id}`], validated_by: "gate" },
-			{ statement: gatePass ? "PASS: hello.txt contains hello" : "FAIL: hello.txt contains hi", status: gatePass ? "validated" : "rejected", source_role: "validator", evidence: ["artifact:gate-round-1.txt", `envelope:${b.id}`], validated_by: "gate" },
-		],
-		artifacts: [{ path: "gate.py", type: "gate-script" }, { path: "gate-round-1.txt", type: "gate-output" }],
-	});
-	const o = await icm.emit("output", {
-		kind: "output",
-		producer: { role: "harness", model: "harness/fusion-harness" },
-		summary: gatePass ? "Gate PASS at validation 1/5." : "FAILED: halted",
-		claims: [{ statement: "The acceptance gate passed.", status: gatePass ? "validated" : "rejected", source_role: "validator", evidence: [`envelope:${v.id}`, "artifact:gate-round-1.txt"], validated_by: "gate" }],
-		artifacts: [{ path: "gate-round-1.txt", type: "gate-output" }, { path: "builder-round-1.md", type: "raw-report" }],
-	});
-	for (const r of [b, v, o]) assert.deepEqual(r.errors, []);
-	return { runDir, icm, outputId: o.id, validationId: v.id };
-}
-
-async function fusionRun() {
-	const runDir = tmpDir();
-	w(runDir, "prompt.md", "q");
-	w(runDir, "architect.md", "a");
-	w(runDir, "builder.md", "b");
-	w(runDir, "fused.md", "fused");
-	const icm = createIcmRun({ runDir, cwd: REPO, command: "fusion" });
-	await icm.emit("brief", { kind: "brief", producer: { role: "user", model: "human" }, summary: "q", artifacts: [{ path: "prompt.md", type: "prompt" }] });
-	await icm.emit("output", { kind: "output", producer: { role: "fusion", model: "m" }, summary: "fused", claims: [{ statement: "merged", status: "proposed", source_role: "fusion", evidence: ["artifact:fused.md"], validated_by: null }], artifacts: [{ path: "fused.md", type: "fused-report" }] });
-	return runDir;
-}
+import { autoValidateRun, fusionRun, readJson, tmpDir, w } from "./helpers.ts";
 
 describe("defaultContextDir", () => {
 	it("honours the env override and otherwise lives under the home dir, outside any repo", () => {

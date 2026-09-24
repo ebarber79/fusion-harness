@@ -6,3 +6,4 @@ NEVER write to a bare path the other agent would also pick (that is a race: you 
 
 # REQUEST
 {{PROMPT}}
+{{ICM_CONTEXT}}

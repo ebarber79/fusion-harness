@@ -4,7 +4,7 @@ An ACCEPTANCE GATE already exists: the immutable uv Python script below runs aut
 
 # REQUEST
 {{PROMPT}}
-
+{{ICM_CONTEXT}}
 # ACCEPTANCE GATE (read-only — enforced after you finish)
 ```python
 {{GATE_SCRIPT}}

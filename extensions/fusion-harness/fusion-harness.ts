@@ -68,9 +68,11 @@ import * as os from "node:os"; // tmpdir fallback when /tmp is missing
 import * as path from "node:path"; // every artifact/session path
 import { type ExtensionAPI, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Markdown, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { ensureGateMetadata, gateStartFailure } from "./gate.ts"; // gate header normalisation + "the gate could not start" classification (pure, tested)
 import { createIcmRun, excerpt, type ArtifactType, type ContextEnvelope, type EnvelopeInput, type IcmRun } from "./icm/envelope.ts"; // ICM Phase 1 — observe-only envelopes
 import { DIAG_CLAIMS_MAX, diagnosticsToClaims, parseGateDiagnostics, readEnvelope, renderDiagnostics, renderHandoff } from "./icm/handoff.ts"; // ICM Phase 2 — structured, verified handoffs
 import { assessRun, defaultContextDir, listContext, promoteRun, retractContext, showContext } from "./icm/promote.ts"; // ICM Phase 3 — manual, validation-backed promotion
+import { clampLimit, describeRetrieval, gitIsAncestor, renderRetrieved, type RetrievalResult, type RetrievalRole, retrieveContext } from "./icm/retrieve.ts"; // ICM Phase 4 — deterministic retrieval + role projection of VALIDATED context
 
 // ═══ 1. Defaults ═════════════════════════════════════════════════════════════
 
@@ -193,6 +195,7 @@ interface FhDetails {
 	icm?: Array<{ file: string; kind: string; status: string; role: string; ok: boolean }>; // ICM: this run's envelope roster so far (Phase 2 renders it; nothing decides on it)
 	icmConsumed?: string[]; // ICM: envelope files a role consumed as a verified structured handoff in this step
 	icmPromotable?: boolean; // ICM (Phase 3): this run's output is eligible for MANUAL promotion — /icm-promote <artifactsDir>
+	icmRetrieved?: string; // ICM (Phase 4): one line on what durable context this run retrieved into its prompts, or why nothing
 	totalMs?: number;
 	totalCostUsd?: number;
 	error?: string;
@@ -756,9 +759,12 @@ function fill(file: string, vars: Record<string, string>): string {
 	return promptTemplate(file).replace(/\{\{(\w+)\}\}/g, (_m, k) => vars[k] ?? "");
 }
 
+/** Phase 4: a rendered retrieval block as a template slot — empty block ⇒ empty slot ⇒ the prompt is content-identical to its Phase 3 shape. */
+const contextSlot = (block?: string): string => (block?.trim() ? `\n${block.trim()}\n` : "");
+
 /** The /fusion parallel-worker prompt — each worker knows its own role AND its counterpart. */
-function workerPrompt(role: Role, model: string, otherRole: Role, otherModel: string, prompt: string): string {
-	return fill("USER_PROMPT_FUSION_WORKER.md", { ROLE: role, MODEL: model, OTHER_ROLE: otherRole, OTHER_MODEL: otherModel, PROMPT: prompt });
+function workerPrompt(role: Role, model: string, otherRole: Role, otherModel: string, prompt: string, icmContext = ""): string {
+	return fill("USER_PROMPT_FUSION_WORKER.md", { ROLE: role, MODEL: model, OTHER_ROLE: otherRole, OTHER_MODEL: otherModel, PROMPT: prompt, ICM_CONTEXT: contextSlot(icmContext) });
 }
 
 /** The built-in critical-merge instruction, used when /fusion gets no explicit fusion prompt. */
@@ -824,9 +830,9 @@ function fuserPrompt(
 	});
 }
 
-/** Round 1 of /auto-validate: the user's request plus the full (immutable) gate script. */
-function builderPrompt(prompt: string, gateScript: string): string {
-	return fill("USER_PROMPT_BUILDER.md", { PROMPT: prompt, GATE_SCRIPT: gateScript });
+/** Round 1 of /auto-validate: the user's request plus the full (immutable) gate script (+ Phase 4: retrieved prior context, projected for the builder). */
+function builderPrompt(prompt: string, gateScript: string, icmContext = ""): string {
+	return fill("USER_PROMPT_BUILDER.md", { PROMPT: prompt, GATE_SCRIPT: gateScript, ICM_CONTEXT: contextSlot(icmContext) });
 }
 
 /** Rounds 2+: the verbatim gate failure, plus optional triage brief and repaired-gate update. */
@@ -898,9 +904,9 @@ function triagePrompt(
 const validatorSystem = (gatePath: string): string => fill("SYSTEM_PROMPT_VALIDATOR.md", { GATE_PATH: gatePath });
 
 /** The gate-design request: the user's prompt, the project cwd, and the dictated gate path. */
-function validatorPrompt(prompt: string, cwd: string, gatePath: string): string {
+function validatorPrompt(prompt: string, cwd: string, gatePath: string, icmContext = ""): string {
 	// The gate always lives at <artifacts>/gate.py, so the run dir is its dirname.
-	return fill("USER_PROMPT_VALIDATOR.md", { PROMPT: prompt, CWD: cwd, GATE_PATH: gatePath, ARTIFACTS_DIR: path.dirname(gatePath) });
+	return fill("USER_PROMPT_VALIDATOR.md", { PROMPT: prompt, CWD: cwd, GATE_PATH: gatePath, ARTIFACTS_DIR: path.dirname(gatePath), ICM_CONTEXT: contextSlot(icmContext) });
 }
 
 /** The /opinion prompt — answer directly and decisively, tools allowed, no hedging. */
@@ -909,13 +915,6 @@ function opinionPrompt(prompt: string): string {
 }
 
 /** A gate is a PEP 723 uv script; inject the metadata block when the author omitted it. */
-function ensureGateMetadata(script: string): string | undefined {
-	const s = script.trim();
-	if (!s) return undefined;
-	const withMeta = s.includes("# /// script") ? s : `# /// script\n# requires-python = ">=3.11"\n# dependencies = []\n# ///\n${s}`;
-	return `${withMeta}\n`;
-}
-
 /**
  * LEGACY FALLBACK ONLY — the validator now writes gate.py to disk itself.
  *
@@ -974,6 +973,14 @@ export default function (pi: ExtensionAPI) {
 	pi.registerFlag("icm-context-dir", {
 		type: "string",
 		description: "ICM durable context dir for /icm-promote and /icm-context (a USER-LEVEL cache, never the repo). Default $FUSION_ICM_CONTEXT_DIR or ~/.fusion/context.",
+	});
+	pi.registerFlag("icm-retrieve", {
+		type: "string",
+		description: "ICM (Phase 4): read promoted, VALIDATED context back into the ARCHITECT/BUILDER/VALIDATOR prompts as a labelled evidence block — on|off. Default on; an empty context dir leaves every prompt unchanged.",
+	});
+	pi.registerFlag("icm-retrieve-max", {
+		type: "string",
+		description: "ICM (Phase 4): how many of the most recent validated entries to retrieve per run (1-20). Default 5.",
 	});
 	pi.registerFlag("child-timeout", {
 		type: "string",
@@ -1541,6 +1548,7 @@ export default function (pi: ExtensionAPI) {
 			add(new Text(theme.fg("dim", `  icm: ${cells.join(theme.fg("dim", " · "))}  — ${statuses} · icm-manifest.json`), 1, 0));
 			if (d.icmConsumed?.length) add(new Text(theme.fg("dim", `  icm handoff consumed: ${d.icmConsumed.join(", ")} (schema + run scope + artifact hashes verified)`), 1, 0));
 			if (d.icmPromotable && d.artifactsDir) add(new Text(theme.fg("dim", "  icm promotable (manual, gate-backed): ") + theme.fg("mdLink", `/icm-promote ${d.artifactsDir}`), 1, 0));
+			if (d.icmRetrieved) add(new Text(theme.fg("dim", `  ${d.icmRetrieved}`), 1, 0));
 		}
 
 		// The boot banner floats bare on the terminal background — every other panel gets
@@ -1560,6 +1568,8 @@ export default function (pi: ExtensionAPI) {
 			const entries = icmRuns.get(details.artifactsDir)?.manifest.envelopes;
 			if (entries?.length) details.icm = entries.map((e) => ({ file: e.file, kind: e.kind, status: e.status, role: e.producer_role, ok: e.ok }));
 		}
+		// ICM (Phase 4): the first result panel of a run says what durable context its prompts carried.
+		if (details.artifactsDir && !details.icmRetrieved && (details.kind === "duo" || details.kind === "gate")) details.icmRetrieved = icmRetrievals.get(details.artifactsDir);
 		pi.sendMessage<FhDetails>({
 			customType: CUSTOM_TYPE,
 			content: truncateBytes(content, ANSWER_MAX_BYTES),
@@ -1739,6 +1749,7 @@ export default function (pi: ExtensionAPI) {
 			requirements: [truncateChars(prompt, PROMPT_MAX)],
 			decisions: [`command: /${icm.manifest.command}`, ...roles.map((r) => `${r.role.toLowerCase()}: ${r.model} (${r.thinking})`), ...(extra.decisions ?? [])],
 			acceptance_criteria: extra.acceptance_criteria ?? [],
+			risks: extra.risks ?? [],
 			artifacts: [{ path: "prompt.md", type: "prompt" }],
 		});
 	/** One role's raw answer as a draft envelope: an excerpt plus the hashed report. A failed run is a risk, not a claim. */
@@ -1795,6 +1806,41 @@ export default function (pi: ExtensionAPI) {
 			open_questions: dropped ? [`diagnostics truncated: ${dropped} PASS/FAIL line(s) beyond the first ${DIAG_CLAIMS_MAX} are only in the raw gate output`] : [],
 		};
 	};
+
+	// ── 8.7d ICM retrieval (Phase 4 — VALIDATED durable context, re-verified, labelled, projected) ──
+	// Before any role runs, the command reads the context index (icm/retrieve.ts): only
+	// `validated` entries for this repository and branch, newest first, capped; each re-validated
+	// and re-hashed on disk; each labelled with how its commit relates to this checkout. The
+	// result is rendered per role as an evidence block (never an instruction channel) into the
+	// ARCHITECT/BUILDER worker prompts (/fusion), and the VALIDATOR and round-1 BUILDER prompts
+	// (/auto-validate). The brief envelope records exactly what was retrieved, what was withheld
+	// and why; the panel footer shows the same line. Off switch: --icm-retrieve off. An empty or
+	// missing context dir leaves every prompt byte-identical to its Phase 3 shape.
+	const icmContextDir = (): string => flagStr("icm-context-dir") || defaultContextDir();
+	const icmRetrievals = new Map<string, string>(); // artifactsDir → one-line account (panel footer + brief)
+	const icmRetrieve = async (icm: IcmRun | undefined, cwd: string): Promise<RetrievalResult | undefined> => {
+		if (!icm) return undefined;
+		if (flagStr("icm-retrieve").toLowerCase() === "off") {
+			icmRetrievals.set(icm.runDir, "icm retrieval: off (--icm-retrieve off)");
+			return undefined;
+		}
+		try {
+			const max = Number(flagStr("icm-retrieve-max"));
+			const r = await retrieveContext({ contextDir: icmContextDir(), scope: icm.scope, limit: clampLimit(max || undefined), isAncestor: (c) => gitIsAncestor(cwd, c) });
+			icmRetrievals.set(icm.runDir, describeRetrieval(r));
+			return r;
+		} catch (err) {
+			icmRetrievals.set(icm.runDir, `icm retrieval: failed — ${String(err)} (prompts carry no prior context)`);
+			return undefined;
+		}
+	};
+	/** The role's projection of a retrieval, or "" — the slot then vanishes from the prompt. */
+	const icmProject = (r: RetrievalResult | undefined, role: RetrievalRole): string => (r ? renderRetrieved(r, role) : "");
+	/** What the brief envelope records about retrieval: the one-line account as a decision, every withheld entry as a risk. */
+	const icmRetrievalRecord = (icm: IcmRun | undefined, r: RetrievalResult | undefined): { decisions: string[]; risks: string[] } => ({
+		decisions: icm && icmRetrievals.has(icm.runDir) ? [icmRetrievals.get(icm.runDir) as string] : [],
+		risks: r?.skipped.map((s) => `context ${s.id} withheld at retrieval: ${s.reason}`) ?? [],
+	});
 
 	// ── 8.8 Boot banner — big centered "FUSION HARNESS" when the harness starts ──
 	// TUI + fresh startup only: no banner noise in headless JSON streams, and no repeat
@@ -1928,6 +1974,8 @@ export default function (pi: ExtensionAPI) {
 			const stopWidget = startWidget(ctx, "fusion", [architect, builder], fuser, startedAt);
 			ctx.ui.setStatus(CUSTOM_TYPE, "fusion: agents running…");
 			const icm = icmStart("fusion", artifactsDir, ctx.cwd);
+			const retrieved = await icmRetrieve(icm, ctx.cwd); // Phase 4: before any role runs, so the brief can record it
+			const retrievalRecord = icmRetrievalRecord(icm, retrieved);
 			await icmBrief(
 				icm,
 				prompt,
@@ -1936,7 +1984,7 @@ export default function (pi: ExtensionAPI) {
 					{ role: "BUILDER", model: bModel, thinking: roleThinking("builder") },
 					{ role: "FUSION", model: aModel, thinking: roleThinking("architect") },
 				],
-				{ decisions: [`fusion instruction: ${excerpt(fusionInstruction, 300)}`] },
+				{ decisions: [`fusion instruction: ${excerpt(fusionInstruction, 300)}`, ...retrievalRecord.decisions], risks: retrievalRecord.risks },
 			);
 
 			try {
@@ -1944,7 +1992,7 @@ export default function (pi: ExtensionAPI) {
 				await Promise.all([
 					runChild({
 						run: architect,
-						prompt: workerPrompt("ARCHITECT", aModel, "BUILDER", bModel, prompt),
+						prompt: workerPrompt("ARCHITECT", aModel, "BUILDER", bModel, prompt, icmProject(retrieved, "architect")),
 						systemPrompt: roleSystemPrompt("architect"),
 						tools: FULL_TOOLS,
 						thinking: roleThinking("architect"),
@@ -1956,7 +2004,7 @@ export default function (pi: ExtensionAPI) {
 					}),
 					runChild({
 						run: builder,
-						prompt: workerPrompt("BUILDER", bModel, "ARCHITECT", aModel, prompt),
+						prompt: workerPrompt("BUILDER", bModel, "ARCHITECT", aModel, prompt, icmProject(retrieved, "builder")),
 						systemPrompt: roleSystemPrompt("builder"),
 						tools: FULL_TOOLS,
 						thinking: roleThinking("builder"),
@@ -2120,6 +2168,7 @@ export default function (pi: ExtensionAPI) {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
 				icmRuns.delete(artifactsDir);
+				icmRetrievals.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
 			}
 		},
@@ -2137,11 +2186,16 @@ export default function (pi: ExtensionAPI) {
 	const ESCALATE_DEFAULT = 3;
 	const clampCount = (n: number, fallback: number): number => (Number.isFinite(n) && n >= 1 ? Math.min(20, Math.floor(n)) : fallback);
 	const clampValidations = (n: number): number => clampCount(n, MAX_VALIDATIONS_DEFAULT);
-	/** A gate result that means "the gate itself could not run" — never the builder's fault. */
+	/**
+	 * A gate result that means "the gate itself could not run" — never the builder's fault.
+	 * Includes a gate that could not START (malformed PEP 723 header, unresolvable dependency,
+	 * SyntaxError in gate.py itself): such a run says nothing about the build, so the loop must
+	 * not spend correction rounds on it (gate.ts).
+	 */
 	const gateHarnessError = (g: { code: number; output: string }): string | undefined => {
 		if (g.code === 124 || g.output.includes("[gate timed out]")) return "the gate timed out (gates must finish in <60s)";
 		if (g.code === 127 || /failed to spawn|spawn error/.test(g.output)) return "the gate could not be executed — is `uv` installed and on PATH?";
-		return undefined;
+		return gateStartFailure(g);
 	};
 
 	pi.registerCommand("auto-validate", {
@@ -2195,6 +2249,8 @@ export default function (pi: ExtensionAPI) {
 			const builder = newRun("BUILDER", bModel);
 			const GATE_CRITERION = "The VALIDATOR-authored gate.py exits 0 against the working tree.";
 			const icm = icmStart("auto-validate", artifactsDir, ctx.cwd);
+			const retrieved = await icmRetrieve(icm, ctx.cwd); // Phase 4: before any role runs, so the brief can record it
+			const retrievalRecord = icmRetrievalRecord(icm, retrieved);
 			await icmBrief(
 				icm,
 				prompt,
@@ -2202,7 +2258,7 @@ export default function (pi: ExtensionAPI) {
 					{ role: "VALIDATOR", model: aModel, thinking: roleThinking("architect") },
 					{ role: "BUILDER", model: bModel, thinking: roleThinking("builder") },
 				],
-				{ decisions: [`max validations: ${maxV}`, `validator triage from failure ${escalateAt}`], acceptance_criteria: [GATE_CRITERION] },
+				{ decisions: [`max validations: ${maxV}`, `validator triage from failure ${escalateAt}`, ...retrievalRecord.decisions], acceptance_criteria: [GATE_CRITERION], risks: retrievalRecord.risks },
 			);
 			let specId: string | undefined; // the gate's spec envelope — a repaired gate supersedes it
 			let lastBuildId: string | undefined; // the round's build envelope — cited by its validation
@@ -2232,7 +2288,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.setStatus(CUSTOM_TYPE, "auto-validate: validator designing the gate…");
 				await runChild({
 					run: validator,
-					prompt: validatorPrompt(prompt, ctx.cwd, scriptPath),
+					prompt: validatorPrompt(prompt, ctx.cwd, scriptPath, icmProject(retrieved, "validator")),
 					systemPrompt: validatorSystem(scriptPath),
 					tools: VALIDATOR_TOOLS,
 					thinking: roleThinking("architect"),
@@ -2387,7 +2443,7 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.setStatus(CUSTOM_TYPE, `auto-validate: builder — round ${round}/${maxV}…`);
 					await runChild({
 						run: builder,
-						prompt: round === 1 ? builderPrompt(prompt, script) : correctionPrompt(round, maxV, lastGate!.code, lastGate!.output, triageBrief, gateUpdate, icmDiagnostics),
+						prompt: round === 1 ? builderPrompt(prompt, script, icmProject(retrieved, "builder")) : correctionPrompt(round, maxV, lastGate!.code, lastGate!.output, triageBrief, gateUpdate, icmDiagnostics),
 						systemPrompt: roleSystemPrompt("builder"),
 						tools: FULL_TOOLS,
 						thinking: roleThinking("builder"),
@@ -2807,6 +2863,7 @@ export default function (pi: ExtensionAPI) {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
 				icmRuns.delete(artifactsDir);
+				icmRetrievals.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
 			}
 		},
@@ -2932,6 +2989,7 @@ export default function (pi: ExtensionAPI) {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
 				icmRuns.delete(artifactsDir);
+				icmRetrievals.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
 			}
 		},
@@ -2944,7 +3002,6 @@ export default function (pi: ExtensionAPI) {
 	// re-verified, and no secrets in anything copied. The store is a user-level cache — never the
 	// repo — at --icm-context-dir / $FUSION_ICM_CONTEXT_DIR / ~/.fusion/context. Nothing here is
 	// read back into any prompt yet (retrieval is Phase 4).
-	const icmContextDir = (): string => flagStr("icm-context-dir") || defaultContextDir();
 	const icmPanel = (command: "icm-promote" | "icm-context", ok: boolean, body: string) => panel({ kind: "icm", command, ok }, body);
 	const promotionLine = (e: { id: string; status: string; repository: string | null; branch: string | null; commit: string | null; promoted_at: string; summary: string; supersedes: string | null }) =>
 		`- \`${e.id}\` **${e.status}** · ${e.repository ?? "no repository"}${e.branch ? `@${e.branch}` : ""}${e.commit ? ` (${e.commit.slice(0, 10)})` : ""} · ${e.promoted_at}${e.supersedes ? ` · supersedes ${e.supersedes}` : ""}\n  ${e.summary.replace(/\s+/g, " ").slice(0, 160)}`;

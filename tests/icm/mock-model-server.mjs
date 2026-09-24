@@ -27,7 +27,9 @@ import http from "node:http";
 
 const PORT = Number(process.argv[2] ?? 18081);
 // MOCK_LOG=<file>: append one line per request — which role was recognised and which ICM Phase 2
-// blocks the prompt carried. This is how an end-to-end run PROVES a consumer received the handoff.
+// blocks (handoff / diagnostics) and Phase 4 block (prior validated context, with the ctx ids and
+// the compatibility label it carried) the prompt contained. This is how an end-to-end run PROVES
+// a consumer received the handoff or the retrieved context.
 // MOCK_BUILDER_WRONG_FIRST=1: the builder's FIRST attempt writes the wrong content so the gate
 // fails once and a correction round (which consumes the validation envelope) actually happens.
 const LOG = process.env.MOCK_LOG;
@@ -63,7 +65,12 @@ function script(messages) {
 		handoffFiles: [...lastUser.matchAll(/Envelope file: (\S+)/g)].map((m) => m[1].split("/").pop()),
 		diagnostics: lastUser.includes("# STRUCTURED GATE DIAGNOSTICS"),
 		failItems: (lastUser.match(/^\d+\. /gm) ?? []).length,
+		// Phase 4: retrieved prior context — present?, which promoted outputs, how each relates to this checkout.
+		context: lastUser.includes("# ICM PRIOR VALIDATED CONTEXT"),
+		contextIds: [...lastUser.matchAll(/### Prior validated output (ctx_[0-9A-Z]{26})/g)].map((m) => m[1]),
+		compat: [...lastUser.matchAll(/\[compat: ([a-z-]+)\]/g)].map((m) => m[1]),
 	};
+	const ctxTag = `context=${icm.context} ids=${icm.contextIds.join(",")} compat=${icm.compat.join(",")}`;
 
 	if (system.includes("You are the VALIDATOR acting as TRIAGE DIAGNOSTICIAN")) {
 		return { text: "1. **Diagnosis** — the builder has not written hello.txt with the exact text.\n2. **Do exactly this** — write hello.txt containing `hello`.\n3. **Do NOT** — add extra content." };
@@ -71,6 +78,7 @@ function script(messages) {
 	if (system.includes("You are the VALIDATOR in an auto-validation loop")) {
 		const m = lastUser.match(/^\s*(\/\S*gate\.py)\s*$/m) ?? system.match(/^\s*(\/\S*gate\.py)\s*$/m);
 		const gatePath = m?.[1] ?? "/tmp/gate.py";
+		if (!afterTool) log(`VALIDATOR ${ctxTag}`);
 		if (afterTool) return { text: `${gatePath}\nChecks that hello.txt exists in the project root with exactly the text 'hello'.` };
 		return { tool: { name: "write", args: { path: gatePath, content: GATE } } };
 	}
@@ -78,7 +86,7 @@ function script(messages) {
 		const correction = lastUser.startsWith("GATE FAILED");
 		if (!afterTool) {
 			builderAttempts++;
-			log(`BUILDER ${correction ? "correction" : "round-1"} attempt=${builderAttempts} diagnostics=${icm.diagnostics} failItems=${icm.failItems}`);
+			log(`BUILDER ${correction ? "correction" : "round-1"} attempt=${builderAttempts} diagnostics=${icm.diagnostics} failItems=${icm.failItems} ${ctxTag}`);
 		}
 		const wrong = process.env.MOCK_BUILDER_WRONG_FIRST && builderAttempts === 1 && !correction;
 		const content = wrong ? "hi" : "hello";
@@ -89,6 +97,8 @@ function script(messages) {
 		log(`FUSION handoff=${icm.handoff} files=${icm.handoffFiles.join(",")}`);
 		return { text: "**Fused answer** — Unit tests catch regressions early [ARCHITECT] and document intended behaviour [BUILDER].\n\n**Consensus & divergence** — both agreed tests reduce risk; [ARCHITECT] stressed regressions, [BUILDER] stressed documentation; nothing discarded." };
 	}
+	const worker = lastUser.match(/^You are the (ARCHITECT|BUILDER) agent \(([^)]+)\) in a two-model fusion harness/);
+	if (worker && !afterTool) log(`WORKER role=${worker[1]} model=${worker[2]} ${ctxTag}`);
 	if (afterTool) return { text: "Done." };
 	return { text: "pong — scripted mock answer." };
 }
