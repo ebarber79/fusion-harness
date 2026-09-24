@@ -199,8 +199,12 @@ describe("renderRetrieved — projection per role", () => {
 			assert.ok(block.includes(`### Prior validated output ${promoted.id} — promoted `), role);
 			assert.ok(block.includes("[compat: same-commit]"), role);
 			assert.ok(block.includes("Request (the human's brief for that run): Build the widget"), role);
-			assert.ok(block.includes("Validated claims:"), role);
+			assert.ok(block.includes("Validated claims (what the gate PROVED):"), role);
 			assert.ok(block.includes("The acceptance gate passed. (validated by gate;"), role);
+			assert.ok(block.includes("PASS: hello.txt contains hello (validated by gate;"), `${role}: the enriched PASS line reaches the prompt`);
+			assert.ok(block.includes("Builder's own account (PROPOSED"), `${role}: the builder's account is shown as proposed`);
+			assert.ok(block.includes("- built"), role);
+			assert.ok(!block.includes("Builder's account: built"), "the prefix is stripped in the rendered block");
 			assert.ok(block.includes(path.join(promoted.dest, "artifacts", "builder-round-1.md")), role);
 			assert.ok(block.includes("Promotion note: first promotion"), role);
 		}

@@ -117,6 +117,47 @@ What actually happened, from the artifacts and the validator's session file (`/t
 
 **Follow-up (same day): both defects fixed, rerun green.** `extensions/fusion-harness/gate.ts` (pure, tested in `tests/gate.test.ts`, 14 cases) now owns `ensureGateMetadata` — it recognises near-miss PEP 723 openers/closers (`# ///script`, `#///`, odd spacing) and normalises them instead of prepending a second header — and `gateStartFailure`, which `gateHarnessError` now consults: uv metadata/TOML errors, unresolvable script dependencies, and a SyntaxError whose last traceback frame is `gate.py` itself are classified as "the gate could not start" (a legitimate red baseline that crashes with an ImportError for the not-yet-built module is deliberately *not*). At baseline that stops the run with a GATE ERROR panel before anything is built; in a round it is reported as a harness error, not a builder failure. Rerun of the hybrid check in a **fresh copy of the scratch repo** (fresh session) with retrieval on — `/tmp/fusion-harness-rlcOwG`: header well-formed, red baseline (`exit 1`, one FAIL line), **PASS at round 1**, 1 validator tool call, $0.019. The validator again did not mention the retrieved entry. (This time the model typed the header correctly, so the normalisation path was exercised only by the unit tests.) `just test` runs every suite: 98 tests, 98 pass.
 
+### Promotion enrichment (2026-09-24) — durable context now says WHAT was proved
+
+The benefit test's conclusion was that a promoted output carried only "gate passed" plus the request, so retrieval had nothing to add on a task whose facts sit in the tree. `promoteRun` now **enriches** the stored `output.json` (`enrichOutput` in `icm/promote.ts`; the run's own `output.json` is untouched; `promotion.json` records `enriched_from`) with, attributed and re-validated against the schema before any write:
+
+| Folded in | From | How it is marked |
+|---|---|---|
+| Acceptance criteria | the (latest) `spec` envelope — a repaired gate's spec wins | appended, deduplicated |
+| Every gate-validated `PASS:` claim | the final `validation` envelope | `status: validated`, `validated_by: gate`, evidence = gate output + build envelope — unchanged |
+| The builder's account (final build's summary) | the `build` envelope the validation cites | ONE `status: proposed` claim, `source_role: builder`, evidence = build envelope + its artifacts — never validated |
+| Risks and open questions | spec, final build, final validation | prefixed `[validator]` / `[builder]` |
+| Audit line | — | `decisions`: `enriched at promotion from: spec.json, build-round-N.json, validation-round-N.json (…)` |
+
+Caps: 100 claims, 40 items per list. The retrieval block renders validated claims under "Validated claims (what the gate PROVED)" and the builder's account under a heading that says PROPOSED and points at the artifacts as the truth. Nothing is upgraded: a model's report stays a proposal; only the gate's own lines are validated.
+
+What a future VALIDATOR now receives, re-promoting the benefit test's stage-1 run (`/tmp/fusion-harness-nvB9YP`) with the new code into a scratch context dir (no spend; abridged):
+
+```text
+### Prior validated output ctx_01M3968HXE4HZKEW3H090HEPAJ — promoted … by user from /auto-validate run … [compat: same-commit]
+Request (the human's brief for that run): Create a Python package named ledger … amounts are whole CENTS; floats, strings and bools are refused …
+Outcome: Gate PASS at validation 1/3.
+Acceptance criteria that were met:
+- The VALIDATOR-authored gate.py exits 0 against the working tree.
+Validated claims (what the gate PROVED):
+- The acceptance gate passed. (validated by gate; evidence: envelope:ctx_…, artifact:gate-round-1.txt)
+- PASS: add_entry appends dict with amount (validated by gate; …)
+- PASS: total sums ints correctly …
+- PASS: float amount raises ValueError …
+- PASS: string amount raises ValueError …
+- PASS: bool amount raises ValueError …
+- PASS: negative int amount accepted …
+- PASS: …/ledger/__init__.py uses no third-party dependencies …
+  (16 PASS lines in all)
+Builder's own account (PROPOSED — a model's report, not independently verified; the artifacts below are the truth):
+- Created: - …/ledger/__init__.py - …/ledger/README.md  Ran a Python validation command covering integer entries, totals, and rejection of floats, strings, and booleans.
+Artifacts (complete raw material; SHA-256 re-verified at retrieval): gate-round-1.txt · builder-round-1.md · gate.py
+```
+
+Before enrichment the same entry showed one validated claim ("The acceptance gate passed.") and no account of what was built. Verification: `just test` 98 pass (promotion and retrieval tests extended for the enriched content and its rendering); bun build clean; tsc: the same two pre-existing errors; `just icm-mock-e2e`: all checks passed (28 checks, including the second pair of runs receiving the now-enriched entry). Whether a real model *uses* the proven facts is, as before, unmeasured — the benefit script can be rerun (both arms, ~$0.27) now that the block carries them.
+
+**Enriched rerun (2026-09-24, $0.063, on arm only).** A clean copy of the earlier on-arm scratch (`/tmp/icm-benefit-on-p4mWeZ` → `/tmp/icm-benefit-on-enrichA`: project reset to the stage-1 commit, context dir emptied) was resumed with `just icm-benefit on --resume …`, so the only change from that sample is the enriched promotion; the off arm never sees promoted context and was not rerun. The promoted entry carried 17 claims (16 gate-validated + the builder's proposed account) against 1 before, and the stage-2 brief recorded the retrieval. Stage 2 passed at round 1 like every earlier sample. Validator tool calls: 2 (plain on: 3, off: 6); gate length 110 lines (plain on: 159/164, off: 175); the validator's gate no longer re-tested float rejection; neither role mentioned the prior context in its text or read the promoted artifacts; the CSV export honoured the cents invariant. Reading: the enrichment is delivered and shortens exploration, but on a task whose facts are all recoverable from the tree it has nothing to add — n = 1, not proof. The honest next test is a task whose critical fact exists **only** in the promoted context (a recorded decision or rejected approach), not yet designed.
+
 ### Benefit test (2026-09-24) — real builder, two-stage task, 3 samples, $0.40 total
 
 `just icm-benefit on|off` (`tests/icm/benefit-test.mjs`), workhorse pair (`claude-sonnet-5` validator, `gpt-5.6-terra` builder), low thinking. Stage 1 builds a `ledger` package whose gate enforces integer-cents amounts (floats/bools refused) → commit → promote → role sessions deleted → stage 2 asks for a dollars CSV export **without restating the cents rule**. Two `on` samples (one run by the owner, one by the agent), one `off`.
@@ -131,7 +172,7 @@ Every stage 1 passed at round 1 ($0.058–0.069). Every stage-2 builder (5 tool 
 
 **What the data says.** Outcome, rounds and cost are indistinguishable across arms on this task. The one measurable difference: with retrieval on, the validator explored *less* — half the tool calls and roughly 20 % fewer input tokens than the control, even though its prompt carried the ~1.5 K-token block. Neither role ever read anything under the context dir, and neither mentioned the prior entry in its own words; the block appears to have substituted for the initial `ls`/`find` orientation and nothing more. Gate strength did not depend on the arm (the float-rejection regression check was present in on #1 and off, absent in on #2). No evidence of harm; weak evidence of a small orientation saving; **no evidence of a benefit to correctness on a task where the tree already holds the facts.** n = 3 — indicative only.
 
-**What it would take to see a real benefit.** A task where the promoted context holds something the tree does not: a validated *decision* or *risk* (e.g. "floats were refused because the payments API rejects them — do not widen"), or a prior validation result for a component that is not checked into the tree. Today's promoted outputs carry only "gate passed" plus the request text, so the block has little to add beyond orientation. Enriching what is promoted (e.g. carrying the spec's acceptance criteria and the validation's PASS lines into the output envelope's claims) is a Phase 3 refinement worth more than another benefit run.
+**What it would take to see a real benefit.** A task where the promoted context holds something the tree does not: a validated *decision* or *risk* (e.g. "floats were refused because the payments API rejects them — do not widen"), or a prior validation result for a component that is not checked into the tree. Today's promoted outputs carry only "gate passed" plus the request text, so the block has little to add beyond orientation. Enriching what is promoted is a Phase 3 refinement worth more than another benefit run — **done, see "Promotion enrichment" above.**
 
 **Found on the way — a false positive in the secret guard, fixed.** The `off` arm's promotion was refused because stage 1's `gate.py` contained the Python line `key = e.split(":", 1)[0]`, which the generic `key=`/`token:`/`password=` rule in `redactSecrets` treated as a credential. The rule now fires only when the VALUE looks like a credential literal — a quoted string of 8+ chars or a bare token of 12+ `[A-Za-z0-9_+/=-]` chars — so code such as `secret = os.environ["X"]`, `key=lambda e: …` or `api_key = get_key()` passes, while `password: hunter2hunter2`, `TOKEN: abcdefghijklmnop`, every well-known key format and `Bearer …` are still caught. Four code lines were added to the redaction test (98 tests pass). The affected arm was resumed from its paid stage 1 with the script's new `--resume <scratch-dir>` option.
 
@@ -205,7 +246,7 @@ it already wrote. The envelopes:
 | `tests/icm/retrieve.test.ts` | **Phase 4** contract tests: limit clamping; nothing without repository scope / from an empty dir / from another repository / from another branch (but yes on detached HEAD); superseded and retracted excluded, lineage never a candidate; tampered artifact, retracted record, envelope–index disagreement → withheld with reason; newest-first + limit; all four compatibility labels with real git ancestry; per-role projection and evidence wording; the three template slots. |
 | `tests/icm/helpers.ts` | Shared fixtures (Phases 3–4): `autoValidateRun` (an /auto-validate-shaped run with a real git scope), `fusionRun`, `scratchRepo` (throwaway repo with a fake `origin`), `commitFile`. |
 | `extensions/fusion-harness/USER_PROMPT_FUSION_WORKER.md`, `USER_PROMPT_BUILDER.md`, `USER_PROMPT_VALIDATOR.md` | **Phase 4.** Gain the `{{ICM_CONTEXT}}` slot after the request. Empty slot ⇒ content-identical to the Phase 3 prompt. |
-| `extensions/fusion-harness/icm/promote.ts` | **Phase 3.** `defaultContextDir`, `assessRun` (the evidence-gated eligibility decision; pure read), `promoteRun` (stage, verify, copy, index; refuses duplicates/overwrites), `loadIndex` / `listContext` / `showContext`, `retractContext`. The only code that writes outside a run dir, and it writes only under the context dir. No pi dependency. |
+| `extensions/fusion-harness/icm/promote.ts` | **Phase 3.** `defaultContextDir`, `assessRun` (the evidence-gated eligibility decision; pure read), `enrichOutput` (folds the run's proven facts into the stored output — acceptance criteria, gate PASS claims, the builder's proposed account, risks; attributed, capped), `promoteRun` (stage, verify, enrich, copy, index; refuses duplicates/overwrites), `loadIndex` / `listContext` / `showContext`, `retractContext`. The only code that writes outside a run dir, and it writes only under the context dir. No pi dependency. |
 | `tests/icm/promote.test.ts` | **Phase 3** contract tests: eligibility (PASS run accepted; `/fusion`, failed gate, tampered artifact, secret, rejected envelope, missing manifest refused), promotion layout and index, duplicate refusal, supersedes, retract, env override. |
 | `extensions/fusion-harness/icm/handoff.ts` | **Phase 2.** `parseGateDiagnostics` / `diagnosticsToClaims` (gate lines → claims); `readEnvelope` (the verified-consumption boundary: schema, scope, artifact hashes); `renderHandoff` / `renderEnvelope` (the fuser's block); `renderDiagnostics` (the builder's block). Pure; no pi dependency. |
 | `extensions/fusion-harness/USER_PROMPT_FUSION_MERGE.md`, `USER_PROMPT_CORRECTION.md` | **Phase 2.** Gain the `{{ICM_HANDOFF}}` / `{{ICM_DIAGNOSTICS_BLOCK}}` slots. Empty slot ⇒ content-identical to the Phase 1 prompt. |

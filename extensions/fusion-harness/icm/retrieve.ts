@@ -21,7 +21,10 @@
  * `node --test` exercises it directly.
  *
  * Projection (plan §10): each role gets only the sections relevant to it, rendered as one
- * evidence block that says, in its first lines, that it is evidence and not instruction. An
+ * evidence block that says, in its first lines, that it is evidence and not instruction. Since
+ * promotion-time enrichment (promote.ts), a promoted output carries the gate's PASS claims, the
+ * spec's acceptance criteria, the builder's (proposed) account and the run's risks — so the block
+ * says what was PROVED, not only that something passed. An
  * empty retrieval renders an empty string, so a prompt without context is byte-identical to
  * its Phase 3 shape.
  */
@@ -226,7 +229,9 @@ export function renderRetrievedItem(it: RetrievedContext, role: RetrievalRole): 
 	if (p.acceptance && e.acceptance_criteria.length) lines.push("Acceptance criteria that were met:", ...bullet(e.acceptance_criteria));
 	if (p.decisions && e.decisions.length) lines.push("Decisions recorded:", ...bullet(e.decisions));
 	const validated = e.claims.filter((c) => c.status === "validated");
-	if (validated.length) lines.push("Validated claims:", ...bullet(validated.map((c) => `${c.statement} (validated by ${c.validated_by ?? "unknown"}; evidence: ${c.evidence.join(", ") || "none"})`)));
+	if (validated.length) lines.push("Validated claims (what the gate PROVED):", ...bullet(validated.map((c) => `${c.statement} (validated by ${c.validated_by ?? "unknown"}; evidence: ${c.evidence.join(", ") || "none"})`)));
+	const account = e.claims.filter((c) => c.status === "proposed" && c.source_role === "builder");
+	if (account.length) lines.push("Builder's own account (PROPOSED — a model's report, not independently verified; the artifacts below are the truth):", ...bullet(account.map((c) => c.statement.replace(/^Builder's account: /, ""))));
 	if (e.risks.length) lines.push("Risks noted then:", ...bullet(e.risks));
 	const arts = it.record.artifacts.filter((a) => p.artifacts === "all" || p.artifacts.includes(a.type));
 	if (arts.length) lines.push("Artifacts (complete raw material; SHA-256 re-verified at retrieval):", ...arts.map((a) => `- ${path.join(it.dir, "artifacts", a.path)} (${a.type}) sha256 ${a.sha256}`));

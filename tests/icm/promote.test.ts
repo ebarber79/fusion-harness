@@ -7,8 +7,9 @@
  * retrievable as accepted project context"):
  *   - only a gate-PASS /auto-validate output with a resolving evidence chain is eligible;
  *   - /fusion outputs, failed gates, tampered artifacts, secrets, rejected envelopes → refused;
- *   - a promotion copies verbatim (hash-checked), marks ONLY the output validated, indexes ONLY
- *     the output, and refuses duplicates/overwrites;
+ *   - a promotion copies artifacts and lineage verbatim (hash-checked), marks ONLY the output validated
+ *     and ENRICHES it with the run's proven facts (gate PASS claims, acceptance criteria, the builder's
+ *     proposed account, risks), indexes ONLY the output, and refuses duplicates/overwrites;
  *   - supersedes and retract change status, never delete;
  *   - the context dir honours the env override (tests never touch ~/.fusion).
  * No pi dependency.
@@ -118,6 +119,20 @@ describe("promoteRun", () => {
 		assert.equal(rec.source_run_dir, runDir);
 		assert.deepEqual(rec.evidence_chain.map((e: string) => e.split(":")[0]), ["envelope", "envelope", "artifact"]);
 		assert.equal(rec.artifacts.find((x: { path: string }) => x.path === "gate-round-1.txt").sha256, sha256Text("exit 0\n\nPASS: hello.txt contains hello"));
+		// Enrichment: the promoted output carries the run's PROVEN facts, attributed; the original stays bare.
+		const passClaims = out.claims.filter((c: { statement: string; status: string; validated_by: string }) => c.statement.startsWith("PASS:") && c.status === "validated" && c.validated_by === "gate");
+		assert.equal(passClaims.length, 1, "the final validation's gate PASS line is folded in");
+		assert.equal(passClaims[0].statement, "PASS: hello.txt contains hello");
+		const account = out.claims.find((c: { source_role: string; status: string }) => c.source_role === "builder" && c.status === "proposed");
+		assert.ok(account, "the builder's account is carried as a PROPOSED claim");
+		assert.equal(account.statement, "Builder's account: built");
+		assert.ok(account.evidence.includes("artifact:builder-round-1.md"));
+		assert.ok(out.acceptance_criteria.includes("gate.py exits 0"), "the spec's acceptance criteria are folded in");
+		assert.ok(out.decisions.some((d: string) => d.startsWith("enriched at promotion from: spec.json, build-round-1.json, validation-round-1.json")));
+		assert.deepEqual(rec.enriched_from, ["spec.json", "build-round-1.json", "validation-round-1.json"]);
+		const original = readJson(path.join(runDir, "output.json"));
+		assert.equal(original.claims.length, 1, "the run's own output.json is not enriched");
+		assert.ok(!original.acceptance_criteria.includes("gate.py exits 0"));
 		const idx = await loadIndex(contextDir);
 		assert.equal(idx.entries.length, 1);
 		assert.equal(idx.entries[0].status, "validated");

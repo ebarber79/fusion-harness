@@ -21,8 +21,18 @@
  *   - RETENTION/DELETION: nothing is deleted by this code. `retract` marks an entry `rejected`;
  *     `supersedes` marks the older entry `superseded`. Files stay for audit; the user owns deletion.
  *
+ * ENRICHMENT (added after the benefit test showed a bare "gate passed" output carries nothing a
+ * later run cannot read from the tree): the promoted output is the run's output envelope PLUS,
+ * attributed to their sources and re-validated against the schema:
+ *   - the spec's acceptance criteria (validator);
+ *   - every gate-validated PASS claim of the final validation envelope — the facts the gate PROVED;
+ *   - one `proposed` claim carrying the final build's summary (the builder's own account, never
+ *     presented as validated);
+ *   - the risks and open questions the spec, final build and final validation recorded (role-prefixed).
+ * The run's own output.json is untouched; `promotion.json` lists the lineage files enriched from.
+ *
  * What lands in the context dir per promotion:
- *   <contextDir>/<repo-slug>/<task_id>/output.json        the promoted envelope, status "validated"
+ *   <contextDir>/<repo-slug>/<task_id>/output.json        the promoted envelope, status "validated", ENRICHED (above)
  *   <contextDir>/<repo-slug>/<task_id>/lineage/*.json     the run's other envelopes, verbatim (still draft)
  *   <contextDir>/<repo-slug>/<task_id>/artifacts/*        the hashed artifacts the chain cites
  *   <contextDir>/<repo-slug>/<task_id>/promotion.json     who/when/from-where, hashes, supersedes, retraction
@@ -33,7 +43,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ArtifactRef, type ContextEnvelope, type IcmManifest, MANIFEST_FILE, nowIso, redactSecrets, sha256File, validateEnvelope } from "./envelope.ts";
+import { type ArtifactRef, type Claim, type ContextEnvelope, type IcmManifest, MANIFEST_FILE, nowIso, redactSecrets, sha256File, validateEnvelope } from "./envelope.ts";
 import { readEnvelope } from "./handoff.ts";
 
 export const CONTEXT_DIR_ENV = "FUSION_ICM_CONTEXT_DIR";
@@ -79,6 +89,7 @@ export interface PromotionRecord {
 	supersedes: string | null;
 	artifacts: ArtifactRef[];
 	lineage: string[]; // envelope files copied verbatim
+	enriched_from: string[]; // lineage files whose criteria / gate PASS claims / build summary / risks were folded into output.json
 	evidence_chain: string[]; // output id → validation id → gate-output artifact
 	retracted: { at: string; reason: string } | null;
 	superseded_by: string | null;
@@ -193,6 +204,56 @@ export async function assessRun(runDir: string): Promise<Assessment> {
 	return a;
 }
 
+// ═══ Enrichment ═══
+
+export const ENRICH_CLAIMS_MAX = 100;
+const ENRICH_LIST_MAX = 40;
+
+/**
+ * Fold the run's proven facts into the output envelope so durable context says WHAT was verified,
+ * not only THAT the gate passed. Pure: returns a new envelope and the lineage files it drew from.
+ * Every added item is attributed (role prefix / source_role + evidence) and nothing is upgraded:
+ * gate claims stay `validated_by: "gate"`, the build summary is `proposed`.
+ */
+export async function enrichOutput(runDir: string, manifest: IcmManifest, output: ContextEnvelope, validation: ContextEnvelope | undefined): Promise<{ envelope: ContextEnvelope; enrichedFrom: string[] }> {
+	const from: string[] = [];
+	const read = async (file: string | undefined): Promise<ContextEnvelope | undefined> => {
+		if (!file) return undefined;
+		try {
+			const raw = await readJson(path.join(runDir, file));
+			if (!validateEnvelope(raw).ok) return undefined;
+			from.push(file);
+			return raw as ContextEnvelope;
+		} catch {
+			return undefined;
+		}
+	};
+	const okEntries = manifest.envelopes.filter((e) => e.ok);
+	const specEntry = [...okEntries].reverse().find((e) => e.kind === "spec"); // a repaired gate's spec supersedes the original
+	const spec = await read(specEntry?.file);
+	const buildId = validation?.claims.flatMap((c) => c.evidence).find((e) => e.startsWith("envelope:"))?.slice("envelope:".length);
+	const build = await read(buildId ? okEntries.find((e) => e.id === buildId && e.kind === "build")?.file : undefined);
+	if (validation) from.push(okEntries.find((e) => e.id === validation.id)?.file ?? "validation");
+
+	const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
+	const acceptance = uniq([...output.acceptance_criteria, ...(spec?.acceptance_criteria ?? [])]).slice(0, ENRICH_LIST_MAX);
+
+	const have = new Set(output.claims.map((c) => `${c.status}|${c.statement}`));
+	const proven: Claim[] = (validation?.claims ?? []).filter((c) => c.status === "validated" && c.validated_by === "gate" && /^PASS:/.test(c.statement) && !have.has(`${c.status}|${c.statement}`));
+	const built: Claim[] =
+		build && build.summary && !build.summary.startsWith("FAILED:")
+			? [{ statement: `Builder's account: ${build.summary}`, status: "proposed", source_role: "builder", evidence: [`envelope:${build.id}`, ...build.artifacts.map((a) => `artifact:${a.path}`)], validated_by: null }]
+			: [];
+	const claims = [...output.claims, ...proven, ...built].slice(0, ENRICH_CLAIMS_MAX);
+
+	const tag = (env: ContextEnvelope | undefined, xs: string[] | undefined) => (env ? (xs ?? []).map((x) => `[${env.producer.role}] ${x}`) : []);
+	const risks = uniq([...output.risks, ...tag(spec, spec?.risks), ...tag(build, build?.risks), ...tag(validation, validation?.risks)]).slice(0, ENRICH_LIST_MAX);
+	const open_questions = uniq([...output.open_questions, ...tag(spec, spec?.open_questions), ...tag(build, build?.open_questions), ...tag(validation, validation?.open_questions)]).slice(0, ENRICH_LIST_MAX);
+	const enrichedFrom = uniq(from);
+	const decisions = uniq([...output.decisions, ...(enrichedFrom.length ? [`enriched at promotion from: ${enrichedFrom.join(", ")} (acceptance criteria, gate PASS claims, builder's account, risks, open questions)`] : [])]);
+	return { envelope: { ...output, acceptance_criteria: acceptance, claims, risks, open_questions, decisions }, enrichedFrom };
+}
+
 // ═══ Index ═══
 
 export async function loadIndex(contextDir: string): Promise<ContextIndex> {
@@ -245,8 +306,10 @@ export async function promoteRun(runDir: string, opts: PromoteOptions): Promise<
 	const dest = path.join(contextDir, rel);
 	if (fs.existsSync(dest)) return { ok: false, reasons: [`${dest} already exists; refusing to overwrite`], assessment };
 
-	// Build the promoted envelope: same id (identity), lifecycle → validated, explicit supersedes.
-	const promoted: ContextEnvelope = { ...output.envelope, status: "validated", supersedes: old?.id ?? output.envelope.supersedes };
+	// Build the promoted envelope: same id (identity), lifecycle → validated, explicit supersedes,
+	// ENRICHED with the run's proven facts (see the module comment). Re-validated before any write.
+	const enriched = await enrichOutput(runDir, manifest, output.envelope, assessment.validation?.envelope);
+	const promoted: ContextEnvelope = { ...enriched.envelope, status: "validated", supersedes: old?.id ?? output.envelope.supersedes };
 	const v = validateEnvelope(promoted);
 	if (!v.ok) return { ok: false, reasons: v.errors.map((e) => `promoted envelope invalid: ${e}`), assessment };
 
@@ -271,6 +334,7 @@ export async function promoteRun(runDir: string, opts: PromoteOptions): Promise<
 		supersedes: old?.id ?? null,
 		artifacts: assessment.artifacts,
 		lineage: assessment.lineage,
+		enriched_from: enriched.enrichedFrom,
 		evidence_chain: [`envelope:${promoted.id}`, ...(assessment.validation ? [`envelope:${assessment.validation.envelope.id}`] : []), ...(assessment.gateOutput ? [`artifact:${assessment.gateOutput.path}`] : [])],
 		retracted: null,
 		superseded_by: null,
