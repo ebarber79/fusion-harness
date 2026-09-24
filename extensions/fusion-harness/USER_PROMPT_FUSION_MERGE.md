@@ -12,6 +12,7 @@ GROUNDING — this run's material is already on disk; read it from these exact p
 # ORIGINAL REQUEST
 {{PROMPT}}
 
+{{ICM_HANDOFF}}
 # ANSWER FROM [{{A_ROLE}}] — {{A_MODEL}}
 {{A_TEXT}}
 

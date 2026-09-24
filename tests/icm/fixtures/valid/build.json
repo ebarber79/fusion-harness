@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "id": "ctx_01K5V8H3Z0A1B2C3D4E5F6G7HA",
+  "kind": "build",
+  "status": "draft",
+  "scope": {
+    "repository": null,
+    "branch": null,
+    "commit": null,
+    "task_id": "task_01K5V8H3Z0A1B2C3D4E5F6G7H0",
+    "run_id": "run_01K5V8H3Z0A1B2C3D4E5F6G7H1"
+  },
+  "producer": { "role": "builder", "model": "openai/gpt-5.6-terra", "created_at": "2026-09-23T18:05:00Z" },
+  "summary": "Added --version to src/cli.ts; ran npm test (12 passed).",
+  "requirements": [],
+  "decisions": ["round 1 of 5"],
+  "risks": [],
+  "acceptance_criteria": [],
+  "claims": [
+    {
+      "statement": "BUILDER reports the request complete for round 1.",
+      "status": "proposed",
+      "source_role": "builder",
+      "evidence": ["artifact:builder-round-1.md"],
+      "validated_by": null
+    }
+  ],
+  "artifacts": [{ "path": "builder-round-1.md", "type": "raw-report", "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }],
+  "open_questions": [],
+  "supersedes": null
+}

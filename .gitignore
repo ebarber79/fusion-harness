@@ -31,6 +31,9 @@ venv/
 *.log
 /tmp-artifacts/
 
+# Durable local ICM context is intentionally not committed by default.
+.fusion/
+
 # Local parking lot for unused assets and scratch files — never committed.
 /tmp/
 

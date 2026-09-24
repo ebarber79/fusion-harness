@@ -68,6 +68,9 @@ import * as os from "node:os"; // tmpdir fallback when /tmp is missing
 import * as path from "node:path"; // every artifact/session path
 import { type ExtensionAPI, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Markdown, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { createIcmRun, excerpt, type ArtifactType, type ContextEnvelope, type EnvelopeInput, type IcmRun } from "./icm/envelope.ts"; // ICM Phase 1 — observe-only envelopes
+import { DIAG_CLAIMS_MAX, diagnosticsToClaims, parseGateDiagnostics, readEnvelope, renderDiagnostics, renderHandoff } from "./icm/handoff.ts"; // ICM Phase 2 — structured, verified handoffs
+import { assessRun, defaultContextDir, listContext, promoteRun, retractContext, showContext } from "./icm/promote.ts"; // ICM Phase 3 — manual, validation-backed promotion
 
 // ═══ 1. Defaults ═════════════════════════════════════════════════════════════
 
@@ -170,8 +173,8 @@ interface AgentStat {
 
 /** The renderer's discriminated payload — one shape per panel `kind`, carried on every custom message. */
 interface FhDetails {
-	kind: "prompt" | "banner" | "duo" | "fused" | "opinion" | "gate" | "validation" | "triage" | "error" | "system-prompt" | "boot";
-	command?: "fusion" | "auto-validate" | "opinion" | "system-prompt"; // absent on "boot" — it belongs to no command
+	kind: "prompt" | "banner" | "duo" | "fused" | "opinion" | "gate" | "validation" | "triage" | "error" | "system-prompt" | "boot" | "icm";
+	command?: "fusion" | "auto-validate" | "opinion" | "system-prompt" | "icm-promote" | "icm-context"; // absent on "boot" — it belongs to no command
 	ok: boolean;
 	round?: number; // auto-validate: which build→validate round this panel reports
 	maxRounds?: number; // auto-validate: the --max-validations cap
@@ -187,6 +190,9 @@ interface FhDetails {
 	gateExitCode?: number;
 	scriptPath?: string;
 	artifactsDir?: string;
+	icm?: Array<{ file: string; kind: string; status: string; role: string; ok: boolean }>; // ICM: this run's envelope roster so far (Phase 2 renders it; nothing decides on it)
+	icmConsumed?: string[]; // ICM: envelope files a role consumed as a verified structured handoff in this step
+	icmPromotable?: boolean; // ICM (Phase 3): this run's output is eligible for MANUAL promotion — /icm-promote <artifactsDir>
 	totalMs?: number;
 	totalCostUsd?: number;
 	error?: string;
@@ -789,9 +795,11 @@ function fuserPrompt(
 	fuserModel: string,
 	fuserThinking: string,
 	artifactsDir: string,
+	icmHandoff = "", // Phase 2: the verified spec+build envelopes, rendered — empty means the Phase 1 prompt
 ): string {
 	return fill("USER_PROMPT_FUSION_MERGE.md", {
 		FUSION_INSTRUCTION: fusionInstruction,
+		ICM_HANDOFF: icmHandoff,
 		MODEL: shortModel(fuserModel),
 		THINKING: fuserThinking,
 		PROMPT: prompt,
@@ -829,10 +837,12 @@ function correctionPrompt(
 	gateOutput: string,
 	triageBrief?: string,
 	repairedGate?: string,
+	icmDiagnostics?: string, // Phase 2: the gate's FAIL lines as structured claims from the validation envelope
 ): string {
 	const remaining = maxRounds - round;
 	return fill("USER_PROMPT_CORRECTION.md", {
 		ROUND: String(round),
+		ICM_DIAGNOSTICS_BLOCK: icmDiagnostics?.trim() ? `\n${icmDiagnostics.trim()}\n` : "",
 		MAX_ROUNDS: String(maxRounds),
 		REMAINING: `${remaining} attempt${remaining === 1 ? "" : "s"} remain`,
 		GATE_EXIT_CODE: String(gateExitCode),
@@ -960,6 +970,10 @@ export default function (pi: ExtensionAPI) {
 	pi.registerFlag("builder-thinking", {
 		type: "string",
 		description: "Thinking level for EVERY builder execution: off|minimal|low|medium|high|xhigh|max. Default medium.",
+	});
+	pi.registerFlag("icm-context-dir", {
+		type: "string",
+		description: "ICM durable context dir for /icm-promote and /icm-context (a USER-LEVEL cache, never the repo). Default $FUSION_ICM_CONTEXT_DIR or ~/.fusion/context.",
 	});
 	pi.registerFlag("child-timeout", {
 		type: "string",
@@ -1418,6 +1432,12 @@ export default function (pi: ExtensionAPI) {
 				duoBody();
 				break;
 			}
+			case "icm": {
+				add(new Text(theme.fg("customMessageLabel", theme.bold(`FUSION HARNESS · /${d.command} — `)) + (d.ok ? theme.fg("success", theme.bold("ICM ✓")) : theme.fg("error", theme.bold("ICM ✗"))), 1, 0));
+				blank();
+				md(content);
+				break;
+			}
 			case "system-prompt": {
 				// Same two-column discipline as every other panel: ARCHITECT-family left, BUILDER
 				// right. No stats row — nothing ran; these are the prompts the NEXT spawns get.
@@ -1514,6 +1534,14 @@ export default function (pi: ExtensionAPI) {
 			].filter(Boolean);
 			add(new Text(theme.fg("dim", `  ${bits.join(" · ")}`), 1, 0));
 		}
+		if (d.kind !== "banner" && d.icm?.length) {
+			// ICM roster: one cell per envelope (✓ valid / ✗ rejected), the lifecycle status, the manifest.
+			const cells = d.icm.map((e) => `${e.ok ? theme.fg("success", "✓") : theme.fg("error", "✗")} ${e.file.replace(/\.json$/, "").replace(/\.rejected$/, " (REJECTED)")}`);
+			const statuses = [...new Set(d.icm.map((e) => e.status))].join("/");
+			add(new Text(theme.fg("dim", `  icm: ${cells.join(theme.fg("dim", " · "))}  — ${statuses} · icm-manifest.json`), 1, 0));
+			if (d.icmConsumed?.length) add(new Text(theme.fg("dim", `  icm handoff consumed: ${d.icmConsumed.join(", ")} (schema + run scope + artifact hashes verified)`), 1, 0));
+			if (d.icmPromotable && d.artifactsDir) add(new Text(theme.fg("dim", "  icm promotable (manual, gate-backed): ") + theme.fg("mdLink", `/icm-promote ${d.artifactsDir}`), 1, 0));
+		}
 
 		// The boot banner floats bare on the terminal background — every other panel gets
 		// the custom-message background block.
@@ -1526,6 +1554,12 @@ export default function (pi: ExtensionAPI) {
 	// ── 8.7 Shared command machinery ───────────────────────────
 
 	const panel = (details: FhDetails, content: string) => {
+		// ICM (Phase 2): a panel that belongs to a run carries that run's envelope roster, read
+		// from the in-memory manifest — so a rejected envelope is shown, never hidden.
+		if (details.artifactsDir && !details.icm) {
+			const entries = icmRuns.get(details.artifactsDir)?.manifest.envelopes;
+			if (entries?.length) details.icm = entries.map((e) => ({ file: e.file, kind: e.kind, status: e.status, role: e.producer_role, ok: e.ok }));
+		}
 		pi.sendMessage<FhDetails>({
 			customType: CUSTOM_TYPE,
 			content: truncateBytes(content, ANSWER_MAX_BYTES),
@@ -1539,7 +1573,7 @@ export default function (pi: ExtensionAPI) {
 	 * but says plainly that the user stopped it — an aborted child is !runOk, so without
 	 * this a stop would surface as "the agents failed", blaming the models for the user.
 	 */
-	const stoppedPanel = (command: string, runs: AgentRun[], artifactsDir: string, startedAt: number, what: string) => {
+	const stoppedPanel = async (command: string, runs: AgentRun[], artifactsDir: string, startedAt: number, what: string) => {
 		panel(
 			{
 				kind: "error",
@@ -1552,6 +1586,12 @@ export default function (pi: ExtensionAPI) {
 			},
 			`⊘ STOPPED — escape pressed. ${what}\nEverything produced up to this point is in ${artifactsDir}.`,
 		);
+		await icmRuns.get(artifactsDir)?.emit("output", {
+			kind: "output",
+			producer: { role: "harness", model: HARNESS_MODEL },
+			summary: `STOPPED — escape pressed. ${what}`,
+			risks: ["stopped by the user before the workflow completed"],
+		});
 	};
 
 	/**
@@ -1664,6 +1704,97 @@ export default function (pi: ExtensionAPI) {
 		totalMs: Date.now() - startedAt,
 		totalCostUsd: runs.reduce((s, r) => s + r.costUsd, 0),
 	});
+
+	// ── 8.7b ICM envelopes (Phase 1 — emit) ─────────────────────
+	// Every run writes schema-valid ContextEnvelope v1 JSON next to its raw artifacts:
+	//   brief → spec → build → validation → output   (+ icm-manifest.json)
+	// They excerpt and HASH the raw reports; they never replace them. Nothing here touches
+	// tool grants, session isolation, or the gate verdict. A malformed envelope lands as
+	// <name>.rejected.json with its errors — the command carries on.
+	// Everything is `draft`: promotion/retrieval is later-phase scope (FUSION_ICM_PLAN.md).
+	const HARNESS_MODEL = "harness/fusion-harness"; // producer.model for orchestrator-derived envelopes
+	const PROMPT_MAX = 4_000; // chars of the user's prompt carried verbatim in the brief
+	const ROLE_TO_PRODUCER: Record<Role, "architect" | "builder" | "fusion" | "validator"> = {
+		ARCHITECT: "architect",
+		BUILDER: "builder",
+		FUSION: "fusion",
+		VALIDATOR: "validator",
+	};
+	const icmRuns = new Map<string, IcmRun>(); // artifactsDir → its ICM run (shared helpers look theirs up here)
+	const icmStart = (command: "opinion" | "fusion" | "auto-validate", artifactsDir: string, cwd: string): IcmRun | undefined => {
+		try {
+			const run = createIcmRun({ runDir: artifactsDir, cwd, command });
+			icmRuns.set(artifactsDir, run);
+			return run;
+		} catch {
+			return undefined; // observe-only: ICM being unavailable must never block a command
+		}
+	};
+	/** The brief: what was asked, with which roles/models — written before any agent runs. */
+	const icmBrief = (icm: IcmRun | undefined, prompt: string, roles: Array<{ role: Role; model: string; thinking: string }>, extra: Partial<EnvelopeInput> = {}) =>
+		icm?.emit("brief", {
+			kind: "brief",
+			producer: { role: "user", model: "human" },
+			summary: excerpt(prompt),
+			requirements: [truncateChars(prompt, PROMPT_MAX)],
+			decisions: [`command: /${icm.manifest.command}`, ...roles.map((r) => `${r.role.toLowerCase()}: ${r.model} (${r.thinking})`), ...(extra.decisions ?? [])],
+			acceptance_criteria: extra.acceptance_criteria ?? [],
+			artifacts: [{ path: "prompt.md", type: "prompt" }],
+		});
+	/** One role's raw answer as a draft envelope: an excerpt plus the hashed report. A failed run is a risk, not a claim. */
+	const icmRole = (
+		icm: IcmRun | undefined,
+		name: string,
+		kind: "spec" | "build" | "output",
+		r: AgentRun,
+		report: string,
+		type: ArtifactType = "raw-report",
+		extra: Partial<EnvelopeInput> = {},
+	) =>
+		icm?.emit(name, {
+			kind,
+			producer: { role: ROLE_TO_PRODUCER[r.role], model: r.model },
+			summary: runOk(r) ? excerpt(r.text) : `FAILED: ${runError(r)}`,
+			decisions: extra.decisions ?? [],
+			risks: runOk(r) ? (extra.risks ?? []) : [`${r.role} (${r.model}) failed: ${runError(r)}`, ...(extra.risks ?? [])],
+			acceptance_criteria: extra.acceptance_criteria ?? [],
+			claims: runOk(r)
+				? [
+						{ statement: `${r.role} produced a response for this request.`, status: "proposed", source_role: ROLE_TO_PRODUCER[r.role], evidence: [`artifact:${report}`], validated_by: null },
+						...(extra.claims ?? []),
+					]
+				: [],
+			artifacts: [{ path: report, type }, ...(extra.artifacts ?? [])],
+			open_questions: extra.open_questions ?? [],
+			supersedes: extra.supersedes ?? null,
+		});
+	/** The run's closing envelope — orchestrator-derived unless a producer is given. */
+	const icmOutput = (icm: IcmRun | undefined, summary: string, extra: Partial<EnvelopeInput> = {}) =>
+		icm?.emit("output", { ...extra, kind: "output", producer: extra.producer ?? { role: "harness", model: HARNESS_MODEL }, summary });
+
+	// ── 8.7c ICM handoffs (Phase 2 — consume, VERIFIED, still draft) ──
+	// Two boundaries now READ envelopes: FUSION gets the spec+build envelopes before the raw
+	// answers, and a BUILDER correction round gets the gate's PASS/FAIL lines as claims from
+	// the round's validation envelope. Every read goes through readEnvelope — schema
+	// re-validated, run scope matched, artifact hashes re-checked. A read that fails is dropped
+	// and recorded as a risk on the consumer's envelope; the prompt then has exactly its Phase 1
+	// shape. Envelopes stay evidence (the blocks say so); promotion remains Phase 3.
+	type Consumed = { envelope: ContextEnvelope; file: string } | { errors: string[]; file: string };
+	const icmConsume = async (icm: IcmRun | undefined, file: string | undefined): Promise<Consumed | undefined> => {
+		if (!icm || !file) return undefined;
+		const r = await readEnvelope(file, { runDir: icm.runDir, expect: { run_id: icm.scope.run_id, repository: icm.scope.repository, commit: icm.scope.commit } });
+		return r.ok && r.envelope ? { envelope: r.envelope, file } : { errors: r.errors, file };
+	};
+	/** Parse a gate run into claims (+ a truncation note) for a validation envelope. */
+	const gateClaims = (output: string, code: number, gateOutputArtifact: string, buildId: string | undefined) => {
+		const diag = parseGateDiagnostics(output, code);
+		const { claims, dropped } = diagnosticsToClaims(diag, gateOutputArtifact, buildId);
+		return {
+			claims,
+			decision: `${diag.fail.length} FAIL / ${diag.pass.length} PASS line(s) parsed into claims${diag.otherLines ? ` (+${diag.otherLines} other line(s) left in the raw output)` : ""}`,
+			open_questions: dropped ? [`diagnostics truncated: ${dropped} PASS/FAIL line(s) beyond the first ${DIAG_CLAIMS_MAX} are only in the raw gate output`] : [],
+		};
+	};
 
 	// ── 8.8 Boot banner — big centered "FUSION HARNESS" when the harness starts ──
 	// TUI + fresh startup only: no banner noise in headless JSON streams, and no repeat
@@ -1796,6 +1927,17 @@ export default function (pi: ExtensionAPI) {
 			const stopper = startStoppable(ctx, "fusion");
 			const stopWidget = startWidget(ctx, "fusion", [architect, builder], fuser, startedAt);
 			ctx.ui.setStatus(CUSTOM_TYPE, "fusion: agents running…");
+			const icm = icmStart("fusion", artifactsDir, ctx.cwd);
+			await icmBrief(
+				icm,
+				prompt,
+				[
+					{ role: "ARCHITECT", model: aModel, thinking: roleThinking("architect") },
+					{ role: "BUILDER", model: bModel, thinking: roleThinking("builder") },
+					{ role: "FUSION", model: aModel, thinking: roleThinking("architect") },
+				],
+				{ decisions: [`fusion instruction: ${excerpt(fusionInstruction, 300)}`] },
+			);
 
 			try {
 				// ── Stage 1: ARCHITECT + BUILDER answer in parallel (full tools each) ──
@@ -1826,13 +1968,16 @@ export default function (pi: ExtensionAPI) {
 				]);
 
 				if (stopper.stopped()) {
-					stoppedPanel("fusion", [architect, builder], artifactsDir, startedAt, "The two agents were killed; no fusion ran.");
+					await stoppedPanel("fusion", [architect, builder], artifactsDir, startedAt, "The two agents were killed; no fusion ran.");
 					return;
 				}
 
 				for (const r of [architect, builder]) {
 					await save(artifactsDir, `${r.role.toLowerCase()}.md`, runOk(r) ? r.text : `FAILED: ${runError(r)}`);
 				}
+
+				const specEnv = await icmRole(icm, "spec", "spec", architect, "architect.md");
+				const buildEnv = await icmRole(icm, "build", "build", builder, "builder.md");
 
 				// Both answers, side by side, buffered — never interleaved.
 				const duoContent = [
@@ -1865,10 +2010,28 @@ export default function (pi: ExtensionAPI) {
 						{ kind: "error", command: "fusion", ok: false, sources: [toStat(architect), toStat(builder)], artifactsDir, ...t },
 						"Fusion skipped: both agents must succeed to fuse. The failure above is attributed to the specific role + model.",
 					);
+					await icmOutput(icm, "Fusion skipped: both agents must succeed to fuse.", {
+						risks: [architect, builder].filter((r) => !runOk(r)).map((r) => `${r.role} (${r.model}) failed: ${runError(r)}`),
+					});
 					return;
 				}
 
 				// ── Stage 2: the FUSION agent (architect model, fresh session) merges both ──
+				// Phase 2: the fuser consumes the ARCHITECT spec and BUILDER build envelopes — each
+				// re-validated and hash-checked against the raw report it references — BEFORE the raw
+				// answers. A handoff that fails verification is dropped (and reported), never used.
+				const handoffs: Array<{ envelope: ContextEnvelope; file: string; label?: string }> = [];
+				const handoffErrors: string[] = [];
+				for (const [env, label] of [
+					[specEnv, "ARCHITECT"],
+					[buildEnv, "BUILDER"],
+				] as const) {
+					const c = await icmConsume(icm, env?.ok ? env.file : undefined);
+					if (!c) handoffErrors.push(`${label}: no valid envelope to hand off (fusion used the raw answer only)`);
+					else if ("envelope" in c) handoffs.push({ envelope: c.envelope, file: c.file, label });
+					else handoffErrors.push(`${label}: ${path.basename(c.file)} NOT consumed — ${c.errors.join("; ")}`);
+				}
+				const consumedFiles = handoffs.map((h) => path.basename(h.file));
 				ctx.ui.setStatus(CUSTOM_TYPE, "fusion: fusing…");
 				await runChild({
 					run: fuser,
@@ -1880,6 +2043,7 @@ export default function (pi: ExtensionAPI) {
 						aModel,
 						roleThinking("architect"),
 						artifactsDir,
+						renderHandoff(handoffs, artifactsDir),
 					),
 					systemPrompt: roleSystemPrompt("architect"),
 					tools: FULL_TOOLS,
@@ -1890,6 +2054,29 @@ export default function (pi: ExtensionAPI) {
 					signal: stopper.signal,
 				});
 				await save(artifactsDir, "fused.md", runOk(fuser) ? fuser.text : `FAILED: ${runError(fuser)}`);
+				await icmRole(icm, "output", "output", fuser, "fused.md", "fused-report", {
+					decisions: [
+						`fusion instruction: ${excerpt(fusionInstruction, 300)}`,
+						consumedFiles.length ? `fusion consumed ICM handoffs before the raw answers: ${consumedFiles.join(", ")} (verified)` : "fusion ran on the raw answers only — no ICM handoff was consumable",
+					],
+					risks: handoffErrors,
+					claims: runOk(fuser)
+						? [
+								{
+									statement: "The fused answer merges [ARCHITECT] and [BUILDER] per the fusion instruction, with attribution.",
+									status: "proposed",
+									source_role: "fusion",
+									evidence: ["artifact:fused.md", ...(specEnv?.ok ? [`envelope:${specEnv.id}`] : []), ...(buildEnv?.ok ? [`envelope:${buildEnv.id}`] : [])],
+									validated_by: null,
+								},
+							]
+						: [],
+					artifacts: [
+						{ path: "architect.md", type: "raw-report" },
+						{ path: "builder.md", type: "raw-report" },
+					],
+					open_questions: ["Consensus/divergence lives in the raw fused report; Phase 2 does not parse it into structured fields."],
+				});
 
 				const t = totals([architect, builder, fuser], startedAt);
 				if (runOk(fuser)) {
@@ -1901,6 +2088,7 @@ export default function (pi: ExtensionAPI) {
 							agent: toStat(fuser),
 							sources: [toStat(architect), toStat(builder)],
 							artifactsDir,
+							icmConsumed: consumedFiles,
 							...t,
 						},
 						fuser.text,
@@ -1931,6 +2119,7 @@ export default function (pi: ExtensionAPI) {
 			} finally {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
+				icmRuns.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
 			}
 		},
@@ -2004,14 +2193,34 @@ export default function (pi: ExtensionAPI) {
 
 			const validator = newRun("VALIDATOR", aModel);
 			const builder = newRun("BUILDER", bModel);
+			const GATE_CRITERION = "The VALIDATOR-authored gate.py exits 0 against the working tree.";
+			const icm = icmStart("auto-validate", artifactsDir, ctx.cwd);
+			await icmBrief(
+				icm,
+				prompt,
+				[
+					{ role: "VALIDATOR", model: aModel, thinking: roleThinking("architect") },
+					{ role: "BUILDER", model: bModel, thinking: roleThinking("builder") },
+				],
+				{ decisions: [`max validations: ${maxV}`, `validator triage from failure ${escalateAt}`], acceptance_criteria: [GATE_CRITERION] },
+			);
+			let specId: string | undefined; // the gate's spec envelope — a repaired gate supersedes it
+			let lastBuildId: string | undefined; // the round's build envelope — cited by its validation
+			let lastValidationId: string | undefined; // each gate run supersedes the previous round's verdict
+			let lastValidationFile: string | undefined; // …and its file is what the next correction round consumes (Phase 2)
 			// Columns match the footer: VALIDATOR (architect-family) left, BUILDER right.
 			// One builder AgentRun is reused across correction rounds — same persistent
 			// session, cumulative tokens/cost, one accumulating flow column.
 			const stopper = startStoppable(ctx, "auto-validate");
 			const stopWidget = startWidget(ctx, "auto-validate", [validator, builder], undefined, startedAt);
-			const fail = (agentStat: AgentStat, body: string, extra: Partial<FhDetails> = {}) => {
+			const fail = async (agentStat: AgentStat, body: string, extra: Partial<FhDetails> = {}, icmExtra: Partial<EnvelopeInput> = {}) => {
 				const t = totals([validator, builder], startedAt);
 				panel({ kind: "error", command: "auto-validate", ok: false, agent: agentStat, artifactsDir, maxRounds: maxV, ...t, ...extra }, body);
+				await icmOutput(icm, `FAILED: ${excerpt(body, 300)}`, {
+					acceptance_criteria: [GATE_CRITERION],
+					risks: [`${agentStat.role} (${agentStat.model}): ${agentStat.error ?? "failed"}`],
+					...icmExtra,
+				});
 			};
 
 			try {
@@ -2050,13 +2259,21 @@ export default function (pi: ExtensionAPI) {
 					}
 				}
 				if (stopper.stopped()) {
-					stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, "The validator was killed while designing the gate; nothing was built.");
+					await stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, "The validator was killed while designing the gate; nothing was built.");
 					return;
 				}
 				if (!script) {
 					const stat = toStat(validator);
 					if (!stat.error) stat.error = `did not write a uv gate script to ${scriptPath}`;
-					fail(
+					await icm?.emit("spec", {
+						kind: "spec",
+						producer: { role: "validator", model: aModel },
+						summary: `FAILED: ${stat.error}`,
+						acceptance_criteria: [GATE_CRITERION],
+						risks: [stat.error],
+						artifacts: [{ path: "validator.md", type: "raw-report" }],
+					});
+					await fail(
 						stat,
 						`✗ VALIDATOR (${aModel}) failed to design the acceptance gate — nothing was built.\nExpected the gate at ${scriptPath}; no file was written and no fenced script was found in its reply.\n\n${validator.text || ""}`,
 					);
@@ -2079,14 +2296,14 @@ export default function (pi: ExtensionAPI) {
 				await save(artifactsDir, "gate-baseline.txt", `exit ${baseline.code}\n\n${baseline.output}`);
 				validator.flow.push({ type: "tool", label: `uv run gate.py (baseline) → exit ${baseline.code}` });
 				if (stopper.stopped()) {
-					stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, "Stopped at the baseline gate run; nothing was built.");
+					await stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, "Stopped at the baseline gate run; nothing was built.");
 					return;
 				}
 				const baselineHarnessErr = gateHarnessError(baseline);
 				if (baselineHarnessErr) {
 					const stat = toStat(validator);
 					stat.error = `gate execution error: ${baselineHarnessErr}`;
-					fail(stat, `✗ GATE ERROR — ${baselineHarnessErr}\n\nNothing was built. Gate output:\n\`\`\`\n${truncateChars(baseline.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``);
+					await fail(stat, `✗ GATE ERROR — ${baselineHarnessErr}\n\nNothing was built. Gate output:\n\`\`\`\n${truncateChars(baseline.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``);
 					return;
 				}
 				const baselineNote =
@@ -2107,6 +2324,31 @@ export default function (pi: ExtensionAPI) {
 					},
 					[`### Acceptance gate (designed by VALIDATOR before the build; immutable)`, "```python", script.trim(), "```", baselineNote].join("\n"),
 				);
+				{
+					const specEnv = await icm?.emit("spec", {
+						kind: "spec",
+						producer: { role: "validator", model: aModel },
+						summary: excerpt(validator.text),
+						acceptance_criteria: [GATE_CRITERION],
+						decisions: [`gate ${gateVia}`, `baseline exit ${baseline.code}`],
+						risks: baseline.code === 0 ? ["The gate already passes at baseline: the gate is weak or the request is already satisfied."] : [],
+						claims: [
+							{
+								statement: "The gate fails against the pre-build state (red baseline).",
+								status: baseline.code !== 0 ? "validated" : "rejected",
+								source_role: "validator",
+								evidence: ["artifact:gate-baseline.txt", "artifact:gate.py"],
+								validated_by: "gate",
+							},
+						],
+						artifacts: [
+							{ path: "validator.md", type: "raw-report" },
+							{ path: "gate.py", type: "gate-script" },
+							{ path: "gate-baseline.txt", type: "gate-output" },
+						],
+					});
+					if (specEnv?.ok) specId = specEnv.id;
+				}
 
 				// ── 3. Build → validate loop ──
 				// Round 1 forks the host session (the builder IS the host's agent lineage);
@@ -2128,10 +2370,24 @@ export default function (pi: ExtensionAPI) {
 							: builder.sessionRef
 								? { sessionDir: firstSpawn.sessionDir, resume: builder.sessionRef }
 								: firstSpawn;
+					// Phase 2: a correction round consumes the previous gate run's validation envelope —
+					// its PASS/FAIL claims become the structured diagnostics block, placed before the raw
+					// gate output (which stays the source of truth). Verified first; dropped if not.
+					let icmDiagnostics: string | undefined;
+					let consumedValidation: string | undefined;
+					let consumeError: string | undefined;
+					if (round > 1) {
+						const c = await icmConsume(icm, lastValidationFile);
+						if (c && "envelope" in c) {
+							icmDiagnostics = renderDiagnostics(c.envelope, { file: c.file });
+							consumedValidation = path.basename(c.file);
+						} else if (c) consumeError = `${path.basename(c.file)} NOT consumed — ${c.errors.join("; ")}`;
+						else consumeError = "no valid validation envelope to consume (builder got the raw gate output only)";
+					}
 					ctx.ui.setStatus(CUSTOM_TYPE, `auto-validate: builder — round ${round}/${maxV}…`);
 					await runChild({
 						run: builder,
-						prompt: round === 1 ? builderPrompt(prompt, script) : correctionPrompt(round, maxV, lastGate!.code, lastGate!.output, triageBrief, gateUpdate),
+						prompt: round === 1 ? builderPrompt(prompt, script) : correctionPrompt(round, maxV, lastGate!.code, lastGate!.output, triageBrief, gateUpdate, icmDiagnostics),
 						systemPrompt: roleSystemPrompt("builder"),
 						tools: FULL_TOOLS,
 						thinking: roleThinking("builder"),
@@ -2141,14 +2397,21 @@ export default function (pi: ExtensionAPI) {
 						signal: stopper.signal,
 					});
 					await save(artifactsDir, `builder-round-${round}.md`, runOk(builder) ? builder.text : `FAILED: ${runError(builder)}`);
+					{
+						const buildEnv = await icmRole(icm, `build-round-${round}`, "build", builder, `builder-round-${round}.md`, "raw-report", {
+							decisions: [`round ${round} of ${maxV}`, ...(consumedValidation ? [`consumed structured gate diagnostics from ${consumedValidation} (verified)`] : [])],
+							risks: consumeError ? [consumeError] : [],
+						});
+						lastBuildId = buildEnv?.ok ? buildEnv.id : undefined;
+					}
 					// Check the stop BEFORE blaming the builder: an escape-killed child is !runOk,
 					// and reporting "BUILDER failed" for a user-initiated stop is a lie.
 					if (stopper.stopped()) {
-						stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped during build round ${round}/${maxV}; the gate was not re-run.`);
+						await stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped during build round ${round}/${maxV}; the gate was not re-run.`);
 						return;
 					}
 					if (!runOk(builder)) {
-						fail(
+						await fail(
 							toStat(builder),
 							`✗ BUILDER (${bModel}) failed during round ${round}/${maxV} — the loop cannot continue.\n\n${builder.text || ""}`,
 							{ round, sources: [toStat(validator)] },
@@ -2161,18 +2424,49 @@ export default function (pi: ExtensionAPI) {
 					await save(artifactsDir, `gate-round-${round}.txt`, `exit ${lastGate.code}\n\n${lastGate.output}`);
 					validator.flow.push({ type: "tool", label: `uv run gate.py (round ${round}) → exit ${lastGate.code}` });
 					if (stopper.stopped()) {
-						stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped at the gate run for round ${round}/${maxV}.`);
+						await stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped at the gate run for round ${round}/${maxV}.`);
 						return;
 					}
 					const harnessErr = gateHarnessError(lastGate);
 					if (harnessErr) {
 						const stat = toStat(validator);
 						stat.error = `gate execution error: ${harnessErr}`;
-						fail(stat, `✗ GATE ERROR during validation ${round}/${maxV} — ${harnessErr}\n\nGate output:\n\`\`\`\n${truncateChars(lastGate.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``, { round });
+						await fail(stat, `✗ GATE ERROR during validation ${round}/${maxV} — ${harnessErr}\n\nGate output:\n\`\`\`\n${truncateChars(lastGate.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``, { round });
 						return;
 					}
 
 					const ok = lastGate.code === 0;
+					{
+						const diag = gateClaims(lastGate.output, lastGate.code, `gate-round-${round}.txt`, lastBuildId);
+						const valEnv = await icm?.emit(`validation-round-${round}`, {
+							kind: "validation",
+							producer: { role: "validator", model: aModel },
+							summary: `Gate run ${round}/${maxV}: ${ok ? "PASS" : "FAIL"} (exit ${lastGate.code}). ${excerpt(lastGate.output, 300)}`,
+							acceptance_criteria: [GATE_CRITERION],
+							decisions: [`exit ${lastGate.code}`, diag.decision],
+							risks: ok && baseline.code === 0 ? ["The gate also passed at baseline — verify the result yourself."] : [],
+							claims: [
+								{
+									statement: "The acceptance gate passed.",
+									status: ok ? "validated" : "rejected",
+									source_role: "validator",
+									evidence: [`artifact:gate-round-${round}.txt`, "artifact:gate.py", ...(lastBuildId ? [`envelope:${lastBuildId}`] : [])],
+									validated_by: "gate",
+								},
+								...diag.claims, // one claim per PASS:/FAIL: line — the builder's structured diagnostics
+							],
+							open_questions: diag.open_questions,
+							artifacts: [
+								{ path: "gate.py", type: "gate-script" },
+								{ path: `gate-round-${round}.txt`, type: "gate-output" },
+							],
+							supersedes: lastValidationId ?? null,
+						});
+						if (valEnv?.ok) {
+							lastValidationId = valEnv.id;
+							lastValidationFile = valEnv.file;
+						}
+					}
 					const t = totals([validator, builder], startedAt);
 					const gateBody = [
 						`### Gate run — ${ok ? "PASS (exit 0)" : `FAIL (exit ${lastGate.code})`}`,
@@ -2199,11 +2493,31 @@ export default function (pi: ExtensionAPI) {
 							gateExitCode: lastGate.code,
 							scriptPath,
 							artifactsDir,
+							icmConsumed: consumedValidation ? [consumedValidation] : undefined,
+							icmPromotable: ok,
 							...t,
 						},
 						`${builderBody}\n\n${gateBody}`,
 					);
 					if (ok) {
+						await icmOutput(icm, `Gate PASS at validation ${round}/${maxV}.`, {
+							acceptance_criteria: [GATE_CRITERION],
+							decisions: ["Phase 3: this envelope stays draft in the run dir; promotion is a manual, gate-backed act — /icm-promote <run-dir>."],
+							risks: baseline.code === 0 ? ["The gate also passed at baseline — verify the result yourself."] : [],
+							claims: [
+								{
+									statement: "The acceptance gate passed.",
+									status: "validated",
+									source_role: "validator",
+									evidence: [...(lastValidationId ? [`envelope:${lastValidationId}`] : []), `artifact:gate-round-${round}.txt`],
+									validated_by: "gate",
+								},
+							],
+							artifacts: [
+								{ path: `gate-round-${round}.txt`, type: "gate-output" },
+								{ path: `builder-round-${round}.md`, type: "raw-report" },
+							],
+						});
 						await save(
 							artifactsDir,
 							"summary.json",
@@ -2244,6 +2558,26 @@ export default function (pi: ExtensionAPI) {
 							signal: stopper.signal,
 						});
 						await save(artifactsDir, `triage-round-${round}.md`, runOk(validator) ? validator.text : `FAILED: ${runError(validator)}`);
+						await icm?.emit(`triage-round-${round}`, {
+							kind: "validation",
+							producer: { role: "triage", model: aModel },
+							summary: runOk(validator) ? excerpt(validator.text) : `FAILED: ${runError(validator)}`,
+							acceptance_criteria: [GATE_CRITERION],
+							decisions: [`escalated after ${round} failed validation(s)`],
+							risks: runOk(validator) ? [] : [`triage failed: ${runError(validator)}`],
+							claims: runOk(validator)
+								? [
+										{
+											statement: "TRIAGE diagnosed why the builder keeps failing the gate (advisory — the gate output stays the source of truth).",
+											status: "proposed",
+											source_role: "triage",
+											evidence: [`artifact:triage-round-${round}.md`],
+											validated_by: null,
+										},
+									]
+								: [],
+							artifacts: [{ path: `triage-round-${round}.md`, type: "triage-report" }],
+						});
 						if (runOk(validator)) {
 							pendingTriage = validator.text;
 							panel(
@@ -2275,6 +2609,22 @@ export default function (pi: ExtensionAPI) {
 									if (script !== gateAfter) await save(artifactsDir, "gate.py", script);
 									pendingGateUpdate = script;
 									validator.flow.push({ type: "tool", label: `gate.py REPAIRED (defect) — old gate saved as gate.py.r${round}` });
+									{
+										const repairEnv = await icm?.emit(`spec-repair-round-${round}`, {
+											kind: "spec",
+											producer: { role: "triage", model: aModel },
+											summary: `GATE DEFECT — the VALIDATOR repaired its own gate after round ${round}; the old gate is preserved as gate.py.r${round}.`,
+											acceptance_criteria: [GATE_CRITERION],
+											decisions: ["one gate repair per run"],
+											artifacts: [
+												{ path: "gate.py", type: "gate-script" },
+												{ path: `gate.py.r${round}`, type: "gate-script" },
+												{ path: `triage-round-${round}.md`, type: "triage-report" },
+											],
+											supersedes: specId ?? null,
+										});
+										if (repairEnv?.ok) specId = repairEnv.id;
+									}
 
 									// The repaired gate re-runs IMMEDIATELY, on the house: a gate defect
 									// was never the builder's failure, so it costs no correction round.
@@ -2282,15 +2632,45 @@ export default function (pi: ExtensionAPI) {
 									const rerun = await runProc("uv", ["run", scriptPath], ctx.cwd, GATE_TIMEOUT_MS, stopper.signal);
 									await save(artifactsDir, `gate-repair-round-${round}.txt`, `exit ${rerun.code}\n\n${rerun.output}`);
 									validator.flow.push({ type: "tool", label: `uv run gate.py (post-repair) → exit ${rerun.code}` });
+									{
+										const diag = gateClaims(rerun.output, rerun.code, `gate-repair-round-${round}.txt`, lastBuildId);
+										const valEnv = await icm?.emit(`validation-repair-round-${round}`, {
+											kind: "validation",
+											producer: { role: "validator", model: aModel },
+											summary: `Post-repair gate run: ${rerun.code === 0 ? "PASS" : "FAIL"} (exit ${rerun.code}). ${excerpt(rerun.output, 300)}`,
+											acceptance_criteria: [GATE_CRITERION],
+											decisions: [`exit ${rerun.code}`, "no builder round consumed", diag.decision],
+											claims: [
+												{
+													statement: "The acceptance gate passed.",
+													status: rerun.code === 0 ? "validated" : "rejected",
+													source_role: "validator",
+													evidence: [`artifact:gate-repair-round-${round}.txt`, "artifact:gate.py", ...(lastBuildId ? [`envelope:${lastBuildId}`] : [])],
+													validated_by: "gate",
+												},
+												...diag.claims,
+											],
+											open_questions: diag.open_questions,
+											artifacts: [
+												{ path: "gate.py", type: "gate-script" },
+												{ path: `gate-repair-round-${round}.txt`, type: "gate-output" },
+											],
+											supersedes: lastValidationId ?? null,
+										});
+										if (valEnv?.ok) {
+							lastValidationId = valEnv.id;
+							lastValidationFile = valEnv.file;
+						}
+									}
 									if (stopper.stopped()) {
-										stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped at the post-repair gate run (round ${round}/${maxV}).`);
+										await stoppedPanel("auto-validate", [validator, builder], artifactsDir, startedAt, `Stopped at the post-repair gate run (round ${round}/${maxV}).`);
 										return;
 									}
 									const rerunHarnessErr = gateHarnessError(rerun);
 									if (rerunHarnessErr) {
 										const stat = toStat(validator);
 										stat.error = `gate execution error: ${rerunHarnessErr}`;
-										fail(stat, `✗ GATE ERROR on the post-repair run — ${rerunHarnessErr}\n\nGate output:\n\`\`\`\n${truncateChars(rerun.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``, { round });
+										await fail(stat, `✗ GATE ERROR on the post-repair run — ${rerunHarnessErr}\n\nGate output:\n\`\`\`\n${truncateChars(rerun.output.trim(), DETAIL_SNIPPET_MAX)}\n\`\`\``, { round });
 										return;
 									}
 									panel(
@@ -2318,6 +2698,23 @@ export default function (pi: ExtensionAPI) {
 									);
 									if (rerun.code === 0) {
 										// The build was right all along — the gate was the bug. End green.
+										await icmOutput(icm, `Gate PASS after gate repair (validation ${round}/${maxV}, no builder round consumed).`, {
+											acceptance_criteria: [GATE_CRITERION],
+											decisions: ["Phase 3: this envelope stays draft in the run dir; promotion is a manual, gate-backed act — /icm-promote <run-dir>.", "gate repaired once by the VALIDATOR"],
+											claims: [
+												{
+													statement: "The acceptance gate passed.",
+													status: "validated",
+													source_role: "validator",
+													evidence: [...(lastValidationId ? [`envelope:${lastValidationId}`] : []), `artifact:gate-repair-round-${round}.txt`],
+													validated_by: "gate",
+												},
+											],
+											artifacts: [
+												{ path: `gate-repair-round-${round}.txt`, type: "gate-output" },
+												{ path: `builder-round-${round}.md`, type: "raw-report" },
+											],
+										});
 										const t = totals([validator, builder], startedAt);
 										const gateBody = `### Gate run — PASS (exit 0, post-repair)\n\`\`\`\n${truncateChars(rerun.output.trim() || "(no output)", DETAIL_SNIPPET_MAX * 2)}\n\`\`\``;
 										const builderBody = `### Builder report — round ${round}\n${builder.text}`;
@@ -2338,6 +2735,7 @@ export default function (pi: ExtensionAPI) {
 												gateExitCode: 0,
 												scriptPath,
 												artifactsDir,
+												icmPromotable: true,
 												...t,
 											},
 											`${builderBody}\n\n${gateBody}`,
@@ -2369,7 +2767,7 @@ export default function (pi: ExtensionAPI) {
 				// ── 4. Max validations exhausted — halt loudly ──
 				const stat = toStat(builder);
 				stat.error = `gate still failing after ${maxV}/${maxV} validations`;
-				fail(
+				await fail(
 					stat,
 					[
 						`## ✗ HALTED — development stopped after ${maxV}/${maxV} validations`,
@@ -2383,6 +2781,18 @@ export default function (pi: ExtensionAPI) {
 						`Raise the cap with \`--max-validations N\` (startup flag or inline) or inspect the artifacts: ${artifactsDir}`,
 					].join("\n"),
 					{ round: maxV },
+					{
+						decisions: [`halted after ${maxV}/${maxV} validations`],
+						claims: [
+							{
+								statement: "The acceptance gate passed.",
+								status: "rejected",
+								source_role: "validator",
+								evidence: [...(lastValidationId ? [`envelope:${lastValidationId}`] : []), `artifact:gate-round-${maxV}.txt`],
+								validated_by: "gate",
+							},
+						],
+					},
 				);
 				await save(
 					artifactsDir,
@@ -2396,6 +2806,7 @@ export default function (pi: ExtensionAPI) {
 			} finally {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
+				icmRuns.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
 			}
 		},
@@ -2422,6 +2833,16 @@ export default function (pi: ExtensionAPI) {
 			const stopper = startStoppable(ctx, "opinion");
 			const stopWidget = startWidget(ctx, "opinion", [architect, builder], undefined, startedAt);
 			ctx.ui.setStatus(CUSTOM_TYPE, "opinion: both models answering…");
+			const icm = icmStart("opinion", artifactsDir, ctx.cwd);
+			await icmBrief(
+				icm,
+				prompt,
+				[
+					{ role: "ARCHITECT", model: aModel, thinking: roleThinking("architect") },
+					{ role: "BUILDER", model: bModel, thinking: roleThinking("builder") },
+				],
+				{ decisions: ["no merge — /opinion is an A/B read"] },
+			);
 
 			try {
 				// Both agents answer the same prompt in parallel — read/bash tools only (an A/B read, not a build).
@@ -2452,13 +2873,16 @@ export default function (pi: ExtensionAPI) {
 				]);
 
 				if (stopper.stopped()) {
-					stoppedPanel("opinion", [architect, builder], artifactsDir, startedAt, "Both agents were killed; no comparison was rendered.");
+					await stoppedPanel("opinion", [architect, builder], artifactsDir, startedAt, "Both agents were killed; no comparison was rendered.");
 					return;
 				}
 
 				for (const r of [architect, builder]) {
 					await save(artifactsDir, `${r.role.toLowerCase()}.md`, runOk(r) ? r.text : `FAILED: ${runError(r)}`);
 				}
+
+				await icmRole(icm, "spec", "spec", architect, "architect.md");
+				await icmRole(icm, "build", "build", builder, "builder.md");
 
 				const ok = runOk(architect) && runOk(builder);
 				const t = totals([architect, builder], startedAt);
@@ -2487,6 +2911,14 @@ export default function (pi: ExtensionAPI) {
 					},
 					fallback,
 				);
+				await icmOutput(icm, ok ? "Two independent answers rendered side by side — no fusion, no promotion." : "The A/B read is incomplete: at least one agent failed.", {
+					decisions: ["/opinion does not merge; both answers stay attributed to their role and model"],
+					risks: [architect, builder].filter((r) => !runOk(r)).map((r) => `${r.role} (${r.model}) failed: ${runError(r)}`),
+					artifacts: [
+						{ path: "architect.md", type: "raw-report" },
+						{ path: "builder.md", type: "raw-report" },
+					],
+				});
 				await save(
 					artifactsDir,
 					"summary.json",
@@ -2499,7 +2931,98 @@ export default function (pi: ExtensionAPI) {
 			} finally {
 				stopper.release(); // never leave the escape tap installed past the command
 				stopWidget();
+				icmRuns.delete(artifactsDir);
 				ctx.ui.setStatus(CUSTOM_TYPE, undefined);
+			}
+		},
+	});
+
+	// ── 8.15 ICM Phase 3 — /icm-promote and /icm-context (manual, validation-backed promotion) ──
+	// Promotion is the ONLY path from a run's /tmp envelopes to durable context, and it is always a
+	// human act: the user names the run dir. Eligibility is decided by evidence (icm/promote.ts):
+	// an /auto-validate output whose gate PASSED, with the chain output → validation → gate output
+	// re-verified, and no secrets in anything copied. The store is a user-level cache — never the
+	// repo — at --icm-context-dir / $FUSION_ICM_CONTEXT_DIR / ~/.fusion/context. Nothing here is
+	// read back into any prompt yet (retrieval is Phase 4).
+	const icmContextDir = (): string => flagStr("icm-context-dir") || defaultContextDir();
+	const icmPanel = (command: "icm-promote" | "icm-context", ok: boolean, body: string) => panel({ kind: "icm", command, ok }, body);
+	const promotionLine = (e: { id: string; status: string; repository: string | null; branch: string | null; commit: string | null; promoted_at: string; summary: string; supersedes: string | null }) =>
+		`- \`${e.id}\` **${e.status}** · ${e.repository ?? "no repository"}${e.branch ? `@${e.branch}` : ""}${e.commit ? ` (${e.commit.slice(0, 10)})` : ""} · ${e.promoted_at}${e.supersedes ? ` · supersedes ${e.supersedes}` : ""}\n  ${e.summary.replace(/\s+/g, " ").slice(0, 160)}`;
+
+	pi.registerCommand("icm-promote", {
+		description: "ICM: promote one run's gate-validated output to durable context (manual) — /icm-promote <run-dir> [--supersedes ctx_…] [--note text]; /icm-promote --assess <run-dir> only reports eligibility",
+		handler: async (raw, ctx) => {
+			let input = (raw ?? "").trim();
+			let supersedes: string | undefined;
+			let note: string | undefined;
+			let assessOnly = false;
+			input = input
+				.replace(/--supersedes[=\s]+(ctx_[0-9A-HJKMNP-TV-Z]{26})\s*/g, (_m, id) => ((supersedes = id), ""))
+				.replace(/--note[=\s]+("[^"]*"|'[^']*'|\S+)\s*/g, (_m, n) => ((note = n.replace(/^["']|["']$/g, "")), ""))
+				.replace(/--assess\s*/g, () => ((assessOnly = true), ""))
+				.trim();
+			if (!input) {
+				ctx.ui.notify("Usage: /icm-promote [--assess] <run-dir> [--supersedes ctx_…] [--note text]", "warning");
+				return;
+			}
+			const runDir = path.resolve(ctx.cwd, input);
+			const contextDir = icmContextDir();
+			panel({ kind: "prompt", command: "icm-promote", ok: true }, `/icm-promote ${(raw ?? "").trim()}`);
+			if (assessOnly) {
+				const a = await assessRun(runDir);
+				icmPanel(
+					"icm-promote",
+					a.eligible,
+					a.eligible
+						? `**Eligible.** ${runDir} → output \`${a.output?.envelope.id}\` (gate PASS via \`${a.validation?.envelope.id}\`, ${a.gateOutput?.path}). ${a.artifacts.length} artifact(s), ${a.lineage.length} lineage envelope(s).\n\nPromote with \`/icm-promote ${runDir}\` → ${contextDir}`
+						: `**Not eligible.**\n${a.reasons.map((r) => `- ${r}`).join("\n")}`,
+				);
+				return;
+			}
+			const r = await promoteRun(runDir, { contextDir, approvedBy: "user", note, supersedes });
+			if (r.ok) {
+				icmPanel(
+					"icm-promote",
+					true,
+					[
+						`**Promoted** \`${r.id}\` → ${r.dest}`,
+						`- status: **validated** (approved by user, ${r.entry.promoted_at})${r.entry.supersedes ? ` · supersedes \`${r.entry.supersedes}\` (now superseded)` : ""}`,
+						`- evidence: output → \`${r.assessment.validation?.envelope.id}\` → ${r.assessment.gateOutput?.path} (exit 0); ${r.assessment.artifacts.length} artifact(s) copied, hashes re-checked`,
+						`- lineage kept as draft: ${r.assessment.lineage.join(", ")}`,
+						`- index: ${path.join(contextDir, "index.json")} · browse with \`/icm-context list\``,
+					].join("\n"),
+				);
+			} else {
+				icmPanel("icm-promote", false, `**Not promoted** — ${runDir}\n${r.reasons.map((x) => `- ${x}`).join("\n")}\n\nNothing was written to ${contextDir}.`);
+			}
+		},
+	});
+
+	pi.registerCommand("icm-context", {
+		description: "ICM: browse durable context — /icm-context list [validated|superseded|rejected] · show <ctx_id> · retract <ctx_id> <reason>. Nothing is deleted, ever.",
+		handler: async (raw, ctx) => {
+			const parts = (raw ?? "").trim().split(/\s+/).filter(Boolean);
+			const sub = parts[0] ?? "list";
+			const contextDir = icmContextDir();
+			panel({ kind: "prompt", command: "icm-context", ok: true }, `/icm-context ${(raw ?? "").trim()}`);
+			try {
+				if (sub === "list") {
+					const status = parts[1] as "validated" | "superseded" | "rejected" | undefined;
+					if (status && !["validated", "superseded", "rejected"].includes(status)) throw new Error(`unknown status filter ${status}`);
+					const entries = await listContext(contextDir, { status });
+					icmPanel("icm-context", true, entries.length ? `**${entries.length} promoted output(s)${status ? ` (${status})` : ""}** in ${contextDir}\n${entries.map(promotionLine).join("\n")}` : `No promoted context${status ? ` with status ${status}` : ""} in ${contextDir}. Promote a gate-PASS run with \`/icm-promote <run-dir>\`.`);
+				} else if (sub === "show" && parts[1]) {
+					const s = await showContext(contextDir, parts[1]);
+					if (!s) icmPanel("icm-context", false, `No promoted output ${parts[1]} in ${contextDir}.`);
+					else icmPanel("icm-context", s.entry.status === "validated", `${promotionLine(s.entry)}\n\n**Envelope** (${path.join(contextDir, s.entry.path, "output.json")})\n\`\`\`json\n${truncateChars(JSON.stringify(s.envelope, null, 2), DETAIL_SNIPPET_MAX * 2)}\n\`\`\`\n**Promotion record**\n\`\`\`json\n${truncateChars(JSON.stringify(s.record, null, 2), DETAIL_SNIPPET_MAX)}\n\`\`\``);
+				} else if (sub === "retract" && parts[1]) {
+					const r = await retractContext(contextDir, parts[1], parts.slice(2).join(" "));
+					icmPanel("icm-context", r.ok, r.ok ? `**Retracted** \`${parts[1]}\` → status rejected (files kept at ${path.join(contextDir, r.entry.path)}).` : `**Not retracted**\n${r.reasons.map((x) => `- ${x}`).join("\n")}`);
+				} else {
+					ctx.ui.notify("Usage: /icm-context list [validated|superseded|rejected] | show <ctx_id> | retract <ctx_id> <reason>", "warning");
+				}
+			} catch (err) {
+				icmPanel("icm-context", false, `**ICM context error** — ${String(err)}`);
 			}
 		},
 	});

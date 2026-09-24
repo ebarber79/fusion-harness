@@ -2,6 +2,7 @@ GATE FAILED — this is correction round {{ROUND}} of {{MAX_ROUNDS}}. {{REMAININ
 
 The acceptance gate ran against your work and failed. Its output below is your exact instruction list: fix EVERY failure, genuinely — do not touch or game the gate.
 
+{{ICM_DIAGNOSTICS_BLOCK}}
 # GATE OUTPUT (exit {{GATE_EXIT_CODE}}) — the source of truth
 ```
 {{GATE_OUTPUT}}

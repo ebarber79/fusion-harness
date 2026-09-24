@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "fusion-harness/icm/context-envelope.v1.schema.json",
+  "title": "ContextEnvelope v1",
+  "description": "ICM (Interoperable Context Management) model-neutral handoff envelope for Fusion Harness. Phase 1: observe-only, every envelope written by the harness is status=draft. See FUSION_ICM_PLAN.md section 6.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "kind",
+    "status",
+    "scope",
+    "producer",
+    "summary",
+    "requirements",
+    "decisions",
+    "risks",
+    "acceptance_criteria",
+    "claims",
+    "artifacts",
+    "open_questions",
+    "supersedes"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "id": { "type": "string", "pattern": "^ctx_[0-9A-HJKMNP-TV-Z]{26}$" },
+    "kind": { "type": "string", "enum": ["brief", "spec", "build", "validation", "output"] },
+    "status": { "type": "string", "enum": ["draft", "validated", "rejected", "superseded"] },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "task_id", "run_id"],
+      "properties": {
+        "repository": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+        "task_id": { "type": "string", "pattern": "^task_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "run_id": { "type": "string", "pattern": "^run_[0-9A-HJKMNP-TV-Z]{26}$" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "model", "created_at"],
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "harness", "architect", "builder", "validator", "fusion", "triage"] },
+        "model": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$" }
+      }
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "requirements": { "type": "array", "items": { "type": "string" } },
+    "decisions": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "acceptance_criteria": { "type": "array", "items": { "type": "string" } },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "status", "source_role", "evidence", "validated_by"],
+        "properties": {
+          "statement": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["proposed", "validated", "rejected"] },
+          "source_role": { "type": "string", "enum": ["user", "harness", "architect", "builder", "validator", "fusion", "triage"] },
+          "evidence": { "type": "array", "items": { "type": "string", "pattern": "^(artifact|envelope|commit):.+" } },
+          "validated_by": { "type": ["string", "null"], "enum": ["gate", "validator", "user", null] }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "type", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["prompt", "raw-report", "gate-script", "gate-output", "fused-report", "triage-report", "other"] },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "supersedes": { "type": ["string", "null"], "pattern": "^ctx_[0-9A-HJKMNP-TV-Z]{26}$" }
+  }
+}

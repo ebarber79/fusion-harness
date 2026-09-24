@@ -209,7 +209,13 @@ fusion-harness/
 │   └── fusion-harness/              # runtime only
 │       ├── fusion-harness.ts        # the whole harness — 3 commands, widget, footer, renderer
 │       ├── SYSTEM_PROMPT_*.md       # validator + triage contracts
-│       └── USER_PROMPT_*.md         # every default prompt, {{VAR}} interpolated
+│       ├── USER_PROMPT_*.md         # every default prompt, {{VAR}} interpolated
+│       └── icm/                     # ICM ContextEnvelope v1: schema, emitter, verified handoffs, manual promotion (Phases 1–3)
+│
+├── tests/icm/                       # ICM contract tests, fixtures, run verifier, mock-model e2e (just icm-test / icm-verify / icm-mock-e2e)
+├── FUSION_ICM_PLAN.md               # ICM design: envelope contract, lifecycle, phases
+├── ICM_IMPLEMENTATION_NOTES.md      # what Phase 1 actually emits, where, and how it was verified
+├── AGENTS.md                        # execution contract for an agent implementing the ICM plan
 │
 ├── live_final_generation/           # artifacts from the on-camera SOTA run (fused bench, gate rounds, manifest)
 │
@@ -291,6 +297,8 @@ Every default prompt sits next to the extension with `{{VARIABLE}}` interpolatio
 Every run makes `/tmp/fusion-harness-XXXXXX/` with `prompt.md`, one `<role>.md` per agent, `fused.md` / `gate.py` + `gate-output.txt` as applicable, `summary.json`, and each child's throwaway session dir. Nothing is ever written into the repo.
 
 Downstream agents are grounded in this dir instead of hunting the filesystem: the FUSION agent's prompt names the run dir and both raw answer files (`architect.md` / `builder.md` — complete even when the inline handoff was truncated), and the VALIDATOR/TRIAGE prompts name the run dir with its per-round builder reports and gate outputs.
+
+**ICM envelopes (Phases 1–3).** Alongside those raw files every run also writes structured, schema-valid `ContextEnvelope v1` JSON — `brief.json`, `spec.json`, `build*.json`, `validation*.json`, `output.json`, indexed by `icm-manifest.json`. Each envelope records the producing role and model, the repo/branch/commit, a short excerpt, and SHA-256 references to the raw reports it summarizes. Two boundaries consume them as **structured handoffs** (Phase 2): the FUSION agent receives the architect's `spec.json` and the builder's `build.json` before the raw answers, and a `/auto-validate` correction round receives the gate's `PASS:`/`FAIL:` lines as claims from the previous `validation-round-N.json`. Every handoff is re-validated, matched to the run's scope, and hash-checked against its raw artifacts before it is rendered — a stale or tampered envelope is dropped and reported, and the prompt falls back to its Phase 1 shape. The handoff blocks state that envelopes are evidence, not instructions; the raw reports and gate output remain the source of truth, and every envelope is still `status: draft` (promotion is Phase 3). Each panel's footer lists the run's envelopes (`icm: ✓ brief · ✓ spec …`) and what was consumed. **Promotion (Phase 3) is manual and evidence-gated:** `/icm-promote <run-dir>` copies a gate-PASS `/auto-validate` output into a user-level context cache (`~/.fusion/context`, or `--icm-context-dir` / `$FUSION_ICM_CONTEXT_DIR` — never the repository) as `status: validated`, after re-verifying the chain output → validation envelope → gate output (`exit 0`), re-hashing every cited artifact, and refusing anything that still matches a secret pattern. `/fusion` and `/opinion` outputs are never promotable (no independent evidence). `/icm-promote --assess <run-dir>` only reports eligibility; `/icm-context list|show|retract` browses the cache, and nothing is ever deleted — retract and supersede only change status. Nothing promoted is read back into a prompt yet (retrieval is Phase 4). Contract tests: `just icm-test`; validate a real run: `just icm-verify /tmp/fusion-harness-XXXXXX`; zero-cost end-to-end proof on a scripted mock model, including a promotion: `just icm-mock-e2e`. Design: [`FUSION_ICM_PLAN.md`](FUSION_ICM_PLAN.md); what is actually emitted and consumed: [`ICM_IMPLEMENTATION_NOTES.md`](ICM_IMPLEMENTATION_NOTES.md).
 
 ---
 

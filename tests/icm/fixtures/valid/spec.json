@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "id": "ctx_01K5V8H3Z0A1B2C3D4E5F6G7H9",
+  "kind": "spec",
+  "status": "draft",
+  "scope": {
+    "repository": "github.com/disler/fusion-harness",
+    "branch": "feature/icm",
+    "commit": "5852f2e0000000000000000000000000deadbeef",
+    "task_id": "task_01K5V8H3Z0A1B2C3D4E5F6G7H0",
+    "run_id": "run_01K5V8H3Z0A1B2C3D4E5F6G7H1"
+  },
+  "producer": { "role": "validator", "model": "anthropic/claude-sonnet-5", "created_at": "2026-09-23T18:00:10.250Z" },
+  "summary": "Gate written to /tmp/fusion-harness-abc123/gate.py: checks that `cli --version` prints a semver and exits 0.",
+  "requirements": [],
+  "decisions": ["gate via: written to disk by the validator", "baseline exit 1"],
+  "risks": [],
+  "acceptance_criteria": ["gate.py exits 0"],
+  "claims": [
+    {
+      "statement": "The gate fails against the pre-build state (red baseline).",
+      "status": "validated",
+      "source_role": "validator",
+      "evidence": ["artifact:gate-baseline.txt"],
+      "validated_by": "gate"
+    }
+  ],
+  "artifacts": [
+    { "path": "validator.md", "type": "raw-report", "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "path": "gate.py", "type": "gate-script", "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "path": "gate-baseline.txt", "type": "gate-output", "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }
+  ],
+  "open_questions": [],
+  "supersedes": null
+}

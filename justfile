@@ -26,6 +26,18 @@ set dotenv-load := true
 #
 # Default prompts live in extensions/fusion-harness/{SYSTEM,USER}_PROMPT_*.md — edit to tune.
 # Sessions persist per project (/tmp/fusion-harness-sessions) — /fh-reset for fresh memories.
+#
+# ICM (Phases 1–3): every run writes ContextEnvelope v1 JSON next to its raw artifacts
+# (brief/spec/build/validation/output + icm-manifest.json); FUSION and BUILDER correction rounds
+# consume them as verified structured handoffs; and a gate-PASS /auto-validate output can be
+# promoted — MANUALLY, by you — to a user-level context cache (never the repo):
+#   /icm-promote [--assess] <run-dir> [--supersedes ctx_…] [--note text]
+#   /icm-context list [validated|superseded|rejected] | show <ctx_id> | retract <ctx_id> <reason>
+#   --icm-context-dir <dir>   (default $FUSION_ICM_CONTEXT_DIR or ~/.fusion/context)
+# See ICM_IMPLEMENTATION_NOTES.md.
+#   just icm-test                    contract tests (schema, fixtures, primitives, emitter, handoffs, promotion)
+#   just icm-verify <run-dir>        validate one real run's envelopes, artifact hashes, gate claims
+#   just icm-mock-e2e                zero-cost end-to-end proof: /fusion + /auto-validate + /icm-promote on a scripted mock model
 
 # WORKHORSE tier — the cheap pair (sonnet-5 plans · terra builds + hosts). Use for testing.
 WORKHORSE_ARCHITECT := "anthropic/claude-sonnet-5"
@@ -53,3 +65,16 @@ fh-sota *ARGS:
         --architect {{SOTA_ARCHITECT}} --builder {{SOTA_BUILDER}} \
         --architect-thinking xhigh --builder-thinking xhigh \
         {{ARGS}}
+
+# ICM contract tests — no pi needed (Node ≥ 22.18 runs the .ts directly).
+icm-test:
+    node --test 'tests/icm/**/*.test.ts'
+
+# Validate the ICM envelopes of one real run dir: schema, artifact hashes, cross-refs, expected kinds.
+icm-verify RUN_DIR:
+    node tests/icm/verify-run.ts {{RUN_DIR}}
+
+# End-to-end ICM proof with ZERO API spend: a scripted OpenAI-compatible mock plays every role,
+# a throwaway PI_CODING_AGENT_DIR keeps ~/.pi untouched, and the runs are verified with icm-verify.
+icm-mock-e2e:
+    node tests/icm/mock-e2e.mjs
