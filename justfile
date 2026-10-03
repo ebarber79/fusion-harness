@@ -35,6 +35,11 @@ WORKHORSE_BUILDER := "openai/gpt-5.6-terra"
 SOTA_ARCHITECT := "anthropic/claude-fable-5"
 SOTA_BUILDER := "openai/gpt-5.6-sol"
 
+# GROK tier — max-efficiency pair that runs on the keys you actually have
+# (haiku plans + fuses · grok-4.6 builds + hosts). No OpenAI key needed.
+GROK_ARCHITECT := "anthropic/claude-haiku-4-5"
+GROK_BUILDER := "xai/grok-4.6"
+
 default:
     @just --list
 
@@ -52,4 +57,12 @@ fh-sota *ARGS:
         --model {{SOTA_BUILDER}} \
         --architect {{SOTA_ARCHITECT}} --builder {{SOTA_BUILDER}} \
         --architect-thinking xhigh --builder-thinking xhigh \
+        {{ARGS}}
+
+# GROK tier — max-efficiency pair at low thinking. Runs on anthropic + xai keys.
+fh-grok *ARGS:
+    pi -e extensions/fusion-harness/fusion-harness.ts \
+        --model {{GROK_BUILDER}} \
+        --architect {{GROK_ARCHITECT}} --builder {{GROK_BUILDER}} \
+        --architect-thinking low --builder-thinking low \
         {{ARGS}}

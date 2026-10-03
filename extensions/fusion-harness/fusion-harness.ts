@@ -71,8 +71,12 @@ import { Box, Container, Markdown, Text, truncateToWidth, visibleWidth, wrapText
 
 // ═══ 1. Defaults ═════════════════════════════════════════════════════════════
 
-const DEFAULT_ARCHITECT = "anthropic/claude-fable-5"; // plans, fuses, validates
-const DEFAULT_BUILDER = "openai/gpt-5.6-sol"; // builds (and hosts — see the launch recipes)
+// Permanent roles: Claude is the ARCHITECT (reasoning/plans/fuses/validates); the local
+// Ollama model is the BUILDER (implements/edits). The builder MUST have tool capability 
+// \u2014 among local models only qwen3:1.7b (thinking+tools, ~1.4GB) has tools and fits this
+// 4GB box (qwen3.6 36B OOMs). Requires qwen3:1.7b pulled into Ollama (see warm-reasoning.sh).
+const DEFAULT_ARCHITECT = "anthropic/claude-fable-5"; // Claude — plans, fuses, validates
+const DEFAULT_BUILDER = "ollama/qwen3:1.7b"; // local Ollama builder — implements/edits
 
 const READONLY_TOOLS = "read,grep,find,ls"; // parallel agents share a cwd — concurrent writers would collide
 const OPINION_TOOLS = "read,grep,find,ls,bash"; // everything except write/edit
@@ -170,7 +174,7 @@ interface AgentStat {
 
 /** The renderer's discriminated payload — one shape per panel `kind`, carried on every custom message. */
 interface FhDetails {
-	kind: "prompt" | "banner" | "duo" | "fused" | "opinion" | "gate" | "validation" | "triage" | "error" | "system-prompt" | "boot";
+	kind: "prompt" | "banner" | "duo" | "fused" | "trio" | "opinion" | "gate" | "validation" | "triage" | "error" | "system-prompt" | "boot";
 	command?: "fusion" | "auto-validate" | "opinion" | "system-prompt"; // absent on "boot" — it belongs to no command
 	ok: boolean;
 	round?: number; // auto-validate: which build→validate round this panel reports
@@ -1446,6 +1450,30 @@ export default function (pi: ExtensionAPI) {
 				md(content);
 				break;
 			}
+			case "trio": {
+				add(new Text(theme.fg("customMessageLabel", theme.bold(`FUSION HARNESS · /${d.command} — both agents ⊕ fused`)), 1, 0));
+				blank();
+				duoBody();
+				blank();
+				add(new FullWidth((w) => [theme.fg("dim", "─".repeat(Math.max(1, w)))]));
+				blank();
+				const src = d.sources ?? [];
+				const srcLabel = src.map((s) => theme.fg(ROLE_COLOR[s.role], `${s.role}(${shortModel(s.model)})`)).join(theme.fg("dim", " ⊕ "));
+				add(
+					new Text(
+						theme.fg("success", theme.bold(`⧉ FUSED`)) +
+							theme.fg("dim", " ← ") +
+							srcLabel +
+							(d.agent ? theme.fg("dim", `   ${STATUS_GLYPH[d.agent.status]} ${statLine(d.agent)}`) : ""),
+						1,
+						0,
+					),
+				);
+				if (d.agent) add(new Text(theme.fg("dim", `  fused by ${d.agent.role} model ${d.agent.model} (fresh session)`), 1, 0));
+				blank();
+				md(content);
+				break;
+			}
 			case "gate": {
 				add(
 					new Text(
@@ -1842,22 +1870,22 @@ export default function (pi: ExtensionAPI) {
 					`## BUILDER · ${bModel}`,
 					runOk(builder) ? builder.text : `FAILED: ${runError(builder)}`,
 				].join("\n");
-				panel(
-					{
-						kind: "duo",
-						command: "fusion",
-						ok: runOk(architect) && runOk(builder),
-						sources: [toStat(architect), toStat(builder)],
-						answers: [
-							{ role: "ARCHITECT", model: aModel, text: runOk(architect) ? architect.text : "" },
-							{ role: "BUILDER", model: bModel, text: runOk(builder) ? builder.text : "" },
-						],
-						artifactsDir,
-					},
-					duoContent,
-				);
 
 				if (!runOk(architect) || !runOk(builder)) {
+					panel(
+						{
+							kind: "duo",
+							command: "fusion",
+							ok: runOk(architect) && runOk(builder),
+							sources: [toStat(architect), toStat(builder)],
+							answers: [
+								{ role: "ARCHITECT", model: aModel, text: runOk(architect) ? architect.text : "" },
+								{ role: "BUILDER", model: bModel, text: runOk(builder) ? builder.text : "" },
+							],
+							artifactsDir,
+						},
+						duoContent,
+					);
 					fuser.status = "failed";
 					fuser.errorMessage = "skipped — needs both inputs";
 					const t = totals([architect, builder], startedAt);
@@ -1895,17 +1923,35 @@ export default function (pi: ExtensionAPI) {
 				if (runOk(fuser)) {
 					panel(
 						{
-							kind: "fused",
+							kind: "trio",
 							command: "fusion",
 							ok: true,
 							agent: toStat(fuser),
 							sources: [toStat(architect), toStat(builder)],
+							answers: [
+								{ role: "ARCHITECT", model: aModel, text: architect.text },
+								{ role: "BUILDER", model: bModel, text: builder.text },
+							],
 							artifactsDir,
 							...t,
 						},
 						fuser.text,
 					);
 				} else {
+					panel(
+						{
+							kind: "duo",
+							command: "fusion",
+							ok: runOk(architect) && runOk(builder),
+							sources: [toStat(architect), toStat(builder)],
+							answers: [
+								{ role: "ARCHITECT", model: aModel, text: runOk(architect) ? architect.text : "" },
+								{ role: "BUILDER", model: bModel, text: runOk(builder) ? builder.text : "" },
+							],
+							artifactsDir,
+						},
+						duoContent,
+					);
 					panel(
 						{
 							kind: "error",
