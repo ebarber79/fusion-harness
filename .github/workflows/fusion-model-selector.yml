@@ -1,0 +1,40 @@
+name: Fusion selector verification
+on:
+  push:
+    paths:
+      - 'fusion-model-selector/**'
+      - '.github/workflows/fusion-model-selector.yml'
+  pull_request:
+    paths:
+      - 'fusion-model-selector/**'
+      - '.github/workflows/fusion-model-selector.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    defaults:
+      run:
+        working-directory: fusion-model-selector
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Offline Python regression tests
+        run: python -m unittest -v
+      - name: UI behavior and syntax
+        run: |
+          node test_models_ui.js
+          node --check static/app.js
+          node --check test_models_ui.js
+      - name: Check current commit whitespace
+        run: git show --format= --check HEAD

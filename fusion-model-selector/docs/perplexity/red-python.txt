@@ -1,0 +1,87 @@
+test_catalog_transport_and_bounds (test_perplexity.Perplexity.test_catalog_transport_and_bounds) ... FAIL
+test_credentials (test_perplexity.Perplexity.test_credentials) ... FAIL
+test_hidden_setup (test_perplexity.Perplexity.test_hidden_setup) ... FAIL
+test_independent_catalogs_and_filter (test_perplexity.Perplexity.test_independent_catalogs_and_filter) ... FAIL
+test_malformed_and_source_security (test_perplexity.Perplexity.test_malformed_and_source_security) ... FAIL
+test_payload_sources_usage_redaction (test_perplexity.Perplexity.test_payload_sources_usage_redaction) ... ERROR
+test_routing_context_four_stage_metadata (test_perplexity.Perplexity.test_routing_context_four_stage_metadata) ... FAIL
+
+======================================================================
+ERROR: test_payload_sources_usage_redaction (test_perplexity.Perplexity.test_payload_sources_usage_redaction)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 27, in test_payload_sources_usage_redaction
+    out = fusion.Provider(lambda *a: calls.append(a) or answer('answer synthetic-key'))('perplexity', MODEL, 'rules', 'request')
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 343, in __call__
+    raise ProviderError('Provider request failed; check key, model, connectivity and service availability.') from None
+fusion.ProviderError: Provider request failed; check key, model, connectivity and service availability.
+
+======================================================================
+FAIL: test_catalog_transport_and_bounds (test_perplexity.Perplexity.test_catalog_transport_and_bounds)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 51, in test_catalog_transport_and_bounds
+    self.assertTrue(callable(getattr(fusion, 'fetch_perplexity_models', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_credentials (test_perplexity.Perplexity.test_credentials)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 16, in test_credentials
+    self.assertTrue(callable(getattr(fusion, 'load_perplexity_key', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_hidden_setup (test_perplexity.Perplexity.test_hidden_setup)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 90, in test_hidden_setup
+    self.assertIsNotNone(importlib.util.find_spec('setup_perplexity_key'))
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unexpectedly None
+
+======================================================================
+FAIL: test_independent_catalogs_and_filter (test_perplexity.Perplexity.test_independent_catalogs_and_filter)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 63, in test_independent_catalogs_and_filter
+    self.assertTrue(callable(getattr(fusion, 'fetch_perplexity_models', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_malformed_and_source_security (test_perplexity.Perplexity.test_malformed_and_source_security)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 40, in test_malformed_and_source_security
+    self.assertTrue(callable(getattr(fusion, 'load_perplexity_key', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_routing_context_four_stage_metadata (test_perplexity.Perplexity.test_routing_context_four_stage_metadata)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_perplexity.py", line 70, in test_routing_context_four_stage_metadata
+    self.assertEqual(fusion.builder_selection('perplexity:'+MODEL),('perplexity',MODEL))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: ('ollama', 'perplexity:perplexity/sonar') != ('perplexity', 'perplexity/sonar')
+
+First differing element 0:
+'ollama'
+'perplexity'
+
+- ('ollama', 'perplexity:perplexity/sonar')
+?  ----------           ^
+
++ ('perplexity', 'perplexity/sonar')
+?             ^^^^
+
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.003s
+
+FAILED (failures=6, errors=1)

@@ -1,0 +1,32 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; color: #edf0f8; background: #10131b; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 28px clamp(16px, 3vw, 54px); }
+header { margin-bottom: 24px; }
+h1 { font-size: 42px; letter-spacing: -.04em; margin: 4px 0; }
+header p { color: #b2bdd0; }
+.eyebrow { color: #79ddc9; font-size: 12px; letter-spacing: .14em; }
+.controls, .panel { border: 1px solid #364053; border-radius: 12px; background: #191f2c; }
+.controls { padding: 20px; }
+.disclosure { margin-top: 0; font-size: 14px; line-height: 1.6; color: #c5cedf; max-width: 1100px; }
+.models { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+label { display: block; font-size: 14px; color: #c5cedf; }
+input, select, textarea { display: block; width: 100%; background: #0f1420; border: 1px solid #4b5871; border-radius: 6px; color: #edf0f8; padding: 12px; margin-top: 7px; font: inherit; }
+textarea { resize: vertical; min-height: 115px; }
+input:focus, select:focus, textarea:focus, button:focus-visible, pre:focus-visible { outline: 2px solid #79ddc9; outline-offset: 2px; }
+.model-tools { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; color: #c5cedf; }
+.model-tools button { padding: 8px 12px; }
+select:disabled { opacity: .65; }
+.actions { display: flex; gap: 18px; align-items: center; margin-top: 16px; }
+button { background: #79ddc9; color: #092920; border: 0; padding: 12px 22px; border-radius: 6px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+#status { font-size: 14px; color: #c5cedf; }
+#error, .stage-error { color: #ffb6ac; font-size: 14px; line-height: 1.5; }
+#error:empty, .stage-error:empty { display: none; }
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+.panel { padding: 18px; min-width: 0; }
+h2 { font-size: 17px; margin: 0; }
+h2 span { display: block; color: #a9b7cd; font-size: 12px; margin-top: 8px; font-weight: 400; }
+.stage-status { color: #79ddc9; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
+pre { font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 230px; max-height: 70vh; overflow: auto; }
+.footnote { color: #a9b7cd; font-size: 13px; line-height: 1.6; }
+@media (max-width: 850px) { .panels, .models { grid-template-columns: 1fr; } pre { min-height: 140px; } }

@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Perplexity catalog choice
+
+false !== true
+
+    at main (/home/siegepi10/fusion-model-selector/test_models_ui.js:147:10) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

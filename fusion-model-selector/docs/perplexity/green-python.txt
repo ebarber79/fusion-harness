@@ -1,0 +1,72 @@
+test_analysis_failure_preserves_three_outputs_and_partial_usage (test_analysis.Analysis.test_analysis_failure_preserves_three_outputs_and_partial_usage) ... ok
+test_analysis_instructions_are_evidence_based_not_hidden_reasoning (test_analysis.Analysis.test_analysis_instructions_are_evidence_based_not_hidden_reasoning) ... ok
+test_fixed_routing_order_context_and_four_stage_usage (test_analysis.Analysis.test_fixed_routing_order_context_and_four_stage_usage) ... ok
+test_four_panel_markup_disclosure_and_layout (test_analysis.Analysis.test_four_panel_markup_disclosure_and_layout) ... ok
+test_missing_stage_is_truthfully_passed_to_analysis (test_analysis.Analysis.test_missing_stage_is_truthfully_passed_to_analysis) ... ok
+test_additive_catalog_disabled_fallback (test_architect.Architect.test_additive_catalog_disabled_fallback) ... ok
+test_markup_stage_mapping (test_architect.Architect.test_markup_stage_mapping) ... ok
+test_routing_metadata_context_usage_and_synthesis_independence (test_architect.Architect.test_routing_metadata_context_usage_and_synthesis_independence) ... ok
+test_validation (test_architect.Architect.test_validation) ... ok
+test_implementation_exists (test_fusion.Availability.test_implementation_exists) ... ok
+test_each_failure_preserves_other_outputs_and_hides_exception (test_fusion.Core.test_each_failure_preserves_other_outputs_and_hides_exception) ... ok
+test_oversized_output_is_bounded (test_fusion.Core.test_oversized_output_is_bounded) ... ok
+test_sequence_and_context (test_fusion.Core.test_sequence_and_context) ... ok
+test_single_run_bounded_state (test_fusion.Core.test_single_run_bounded_state) ... ok
+test_validation (test_fusion.Core.test_validation) ... ok
+test_api_and_routes (test_fusion.HTTP.test_api_and_routes) ... ok
+test_hosts_origins_content_type (test_fusion.HTTP.test_hosts_origins_content_type) ... ok
+test_private_key_file (test_fusion.KeySetup.test_private_key_file) ... ok
+test_fixed_payloads (test_fusion.Providers.test_fixed_payloads) ... ok
+test_key_file_fallback_and_environment_priority (test_fusion.Providers.test_key_file_fallback_and_environment_priority) ... ok
+test_provider_errors_do_not_expose_key (test_fusion.Providers.test_provider_errors_do_not_expose_key) ... ok
+test_provider_text_redacts_active_key (test_fusion.Providers.test_provider_text_redacts_active_key) ... ok
+test_redirects_rejected (test_fusion.Providers.test_redirects_rejected) ... ok
+test_transport_response_bound_and_proxy_disabling (test_fusion.Providers.test_transport_response_bound_and_proxy_disabling) ... ok
+test_static_contract (test_fusion.UI.test_static_contract) ... ok
+test_exact_mobile_host_and_matching_https_origin_allowed (test_mobile.Mobile.test_exact_mobile_host_and_matching_https_origin_allowed) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_invalid_config_fails_closed_without_echo_or_qr (test_mobile.Mobile.test_invalid_config_fails_closed_without_echo_or_qr) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_local_svg_has_no_credential_or_external_reference (test_mobile.Mobile.test_local_svg_has_no_credential_or_external_reference) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_other_hosts_origins_and_forwarded_spoofs_denied (test_mobile.Mobile.test_other_hosts_origins_and_forwarded_spoofs_denied) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_unset_is_unavailable_without_qr (test_mobile.Mobile.test_unset_is_unavailable_without_qr) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_valid_hosts_normalize_root (test_mobile.Mobile.test_valid_hosts_normalize_root) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_accessible_pending_panel_in_header (test_mobile.MobileMarkup.test_accessible_pending_panel_in_header) ... skipped 'Pending separate mobile-access feature; outside fourth-panel scope.'
+test_catalog_contract (test_models.Catalog.test_catalog_contract) ... ok
+test_fork_default_port (test_models.Catalog.test_fork_default_port) ... ok
+test_transport_security_bounds_errors (test_models.Catalog.test_transport_security_bounds_errors) ... ok
+test_models_endpoint_and_boundary (test_models.Endpoint.test_models_endpoint_and_boundary) ... ok
+test_browser_behavior (test_models.UI.test_browser_behavior) ... ok
+test_dropdown_markup (test_models.UI.test_dropdown_markup) ... ok
+test_catalog_transport_and_bounds (test_perplexity.Perplexity.test_catalog_transport_and_bounds) ... ok
+test_credentials (test_perplexity.Perplexity.test_credentials) ... ok
+test_disclosure_and_documentation (test_perplexity.Perplexity.test_disclosure_and_documentation) ... ok
+test_hidden_setup (test_perplexity.Perplexity.test_hidden_setup) ... ok
+test_independent_catalogs_and_filter (test_perplexity.Perplexity.test_independent_catalogs_and_filter) ... ok
+test_malformed_and_source_security (test_perplexity.Perplexity.test_malformed_and_source_security) ... ok
+test_payload_sources_usage_redaction (test_perplexity.Perplexity.test_payload_sources_usage_redaction) ... ok
+test_routing_context_four_stage_metadata (test_perplexity.Perplexity.test_routing_context_four_stage_metadata) ... ok
+test_catalog_only_contains_supported_providers (test_provider_removal.SupportedProviders.test_catalog_only_contains_supported_providers) ... ok
+test_removed_provider_rejected_for_both_roles (test_provider_removal.SupportedProviders.test_removed_provider_rejected_for_both_roles) ... ok
+test_removed_runtime_is_absent (test_provider_removal.SupportedProviders.test_removed_runtime_is_absent) ... ok
+test_ui_and_setup_have_no_removed_integration (test_provider_removal.SupportedProviders.test_ui_and_setup_have_no_removed_integration) ... ok
+test_complete_usage_survives_output_truncation (test_usage.JobUsage.test_complete_usage_survives_output_truncation) ... ok
+test_malformed_partial_and_zero_aggregate (test_usage.JobUsage.test_malformed_partial_and_zero_aggregate) ... ok
+test_mixed_missing_error_usage_and_routing (test_usage.JobUsage.test_mixed_missing_error_usage_and_routing) ... ok
+test_unknown_not_zero_and_new_job_resets_after_completion (test_usage.JobUsage.test_unknown_not_zero_and_new_job_resets_after_completion) ... ok
+test_missing_malformed_and_zero_counts (test_usage.ProviderUsage.test_missing_malformed_and_zero_counts) ... ok
+test_ollama_counts_sum (test_usage.ProviderUsage.test_ollama_counts_sum) ... ok
+test_openai_reported_usage_with_subsets (test_usage.ProviderUsage.test_openai_reported_usage_with_subsets) ... ok
+test_xai_reported_usage_with_subsets (test_usage.ProviderUsage.test_xai_reported_usage_with_subsets) ... ok
+test_chat_payload_and_active_key_redaction (test_xai.XAI.test_chat_payload_and_active_key_redaction) ... ok
+test_combined_catalog_filters_text_and_preserves_local_contract (test_xai.XAI.test_combined_catalog_filters_text_and_preserves_local_contract) ... ok
+test_hidden_setup_reuses_private_storage (test_xai.XAI.test_hidden_setup_reuses_private_storage) ... ok
+test_independent_provider_failures_and_honest_fallback (test_xai.XAI.test_independent_provider_failures_and_honest_fallback) ... ok
+test_key_sources_only_and_priority (test_xai.XAI.test_key_sources_only_and_priority) ... ok
+test_provider_error_and_malformed_output_sanitized (test_xai.XAI.test_provider_error_and_malformed_output_sanitized) ... ok
+test_qualified_builder_routing_and_stage_metadata (test_xai.XAI.test_qualified_builder_routing_and_stage_metadata) ... ok
+test_reject_unsupported_xai_builder_ids (test_xai.XAI.test_reject_unsupported_xai_builder_ids) ... ok
+test_secure_bounded_catalog_and_redaction (test_xai.XAI.test_secure_bounded_catalog_and_redaction) ... ok
+
+----------------------------------------------------------------------
+Ran 67 tests in 1.279s
+
+OK (skipped=7)
