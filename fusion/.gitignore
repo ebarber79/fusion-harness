@@ -1,0 +1,26 @@
+# Credentials and local environment
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*api-key*
+*api_key*
+perplexity-api*
+# Private model conversations / local runtime data
+saved-run*.json
+runs/
+logs/
+*.log
+# Generated caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+coverage/
+.DS_Store
+
+# Keep session-derived evaluation material local
+docs/FUSION_EFFECTIVENESS_REPORT.md

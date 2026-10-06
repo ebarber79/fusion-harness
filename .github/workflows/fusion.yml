@@ -1,0 +1,40 @@
+name: fusion verification
+on:
+  push:
+    paths:
+      - 'fusion/**'
+      - '.github/workflows/fusion.yml'
+  pull_request:
+    paths:
+      - 'fusion/**'
+      - '.github/workflows/fusion.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    defaults:
+      run:
+        working-directory: fusion
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Offline Python regression tests
+        run: python -m unittest -v
+      - name: UI regression tests and syntax
+        run: |
+          node --test test_*ui.js
+          node --check static/app.js
+      - name: Check current commit whitespace
+        run: git show --format= --check HEAD

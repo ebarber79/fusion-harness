@@ -1,0 +1,6 @@
+{
+  "name": "fusion",
+  "private": true,
+  "type": "commonjs",
+  "description": "Dependency-free Fusion UI test boundary."
+}

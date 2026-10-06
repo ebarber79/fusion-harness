@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fusion · Architect / Build / Synthesize</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header><p class="eyebrow">LOCAL WORKSPACE / TWO PROVIDERS</p><h1>Fusion</h1>
+<p>One request. Architecture, implementation, and a second look.</p></header>
+<main>
+<section class="controls" aria-label="Run configuration">
+<p class="disclosure"><strong>Cloud data disclosure:</strong> Your prompt is sent to OpenAI for architecture. Your prompt, architecture, and local Ollama output are then sent to OpenAI for synthesis. OpenAI usage may cost money. Ollama generation runs locally. Do not submit secrets. API keys stay server-side; outputs are not executed.</p>
+<form id="run-form">
+<div class="models"><label>OpenAI model (architect + synthesis)<input id="openai-model" name="openai_model" value="gpt-5.5" maxlength="128" required spellcheck="false"></label>
+<label>Ollama builder model<input id="ollama-model" name="ollama_model" value="qwen2.5-coder:0.5b" maxlength="128" required spellcheck="false"></label></div>
+<label for="prompt">What would you like to build?</label>
+<textarea id="prompt" name="prompt" rows="5" maxlength="12000" required placeholder="Describe the goal, constraints, and expected result…"></textarea>
+<div class="actions"><button id="run" type="submit">Run Fusion</button><span id="status" role="status" aria-live="polite">Connecting…</span></div>
+<p id="error" role="alert"></p>
+</form>
+</section>
+<section class="panels" aria-label="Model outputs">
+<article class="panel"><div class="panel-heading"><h2>01 / Architect <span>OpenAI</span></h2><div class="output-tools"><span id="architect-copy-status" role="status" aria-live="polite"></span><button id="architect-copy" type="button" class="copy-output" aria-label="Copy Architect output" aria-controls="architect-output" disabled>Copy</button></div></div><p class="stage-status" id="architect-status">Pending</p><p class="stage-error" id="architect-error"></p><pre id="architect-output" tabindex="0"></pre></article>
+<article class="panel"><div class="panel-heading"><h2>02 / Builder <span>Ollama · local</span></h2><div class="output-tools"><span id="builder-copy-status" role="status" aria-live="polite"></span><button id="builder-copy" type="button" class="copy-output" aria-label="Copy Builder output" aria-controls="builder-output" disabled>Copy</button></div></div><p class="stage-status" id="builder-status">Pending</p><p class="stage-error" id="builder-error"></p><pre id="builder-output" tabindex="0"></pre></article>
+<article class="panel"><div class="panel-heading"><h2>03 / Synthesis <span>OpenAI</span></h2><div class="output-tools"><span id="synthesis-copy-status" role="status" aria-live="polite"></span><button id="synthesis-copy" type="button" class="copy-output" aria-label="Copy Synthesis output" aria-controls="synthesis-output" disabled>Copy</button></div></div><p class="stage-status" id="synthesis-status">Pending</p><p class="stage-error" id="synthesis-error"></p><pre id="synthesis-output" tabindex="0"></pre></article>
+</section>
+<p class="footnote">One run at a time. The latest run stays in server memory until the next run or server shutdown. Copy anything you want to keep. Closing this tab does not cancel a run. A failed stage does not erase earlier outputs; later stages continue with an explicit unavailable-stage note.</p>
+</main>
+</body>
+</html>
