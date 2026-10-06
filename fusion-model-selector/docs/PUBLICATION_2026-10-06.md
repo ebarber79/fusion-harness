@@ -42,3 +42,11 @@ Clipboard automation used substituted writes; actual clipboard reads were blocke
 by browser permissions. This is a trusted-user local desktop app, not evidence of
 public-service security or mobile readiness. Previously recorded paid-generation,
 provider-authentication and mobile limitations are not resolved by a Git push.
+
+## Verified runtime release
+
+Runtime release commit: `558e8b8a394d411319c5179b8022fc99255a201e`. Remote matched after push.
+Hosted CI passed on Python 3.11 and 3.13 / Node 22:
+https://github.com/ebarber79/fusion-harness/actions/runs/37460287050
+
+This record is committed in a documentation-only follow-up. Main remains unchanged.

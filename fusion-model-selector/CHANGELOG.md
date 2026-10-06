@@ -3,6 +3,22 @@
 Application: http://localhost:8766/
 Project: `/home/siegepi10/fusion-model-selector`
 
+## 2026-10-06 — GitHub publication verified
+
+- Published current source/tests and prior copy-control documentation to
+  https://github.com/ebarber79/fusion-harness/tree/release/fusion-model-selector/fusion-model-selector.
+- Runtime release commit: `558e8b8a394d411319c5179b8022fc99255a201e`. Remote branch SHA verified after push.
+- GitHub Actions passed on Python 3.11 and 3.13 / Node 22:
+  https://github.com/ebarber79/fusion-harness/actions/runs/37460287050.
+- Local verification: 95 Python discovered: 88 passed and 7 skipped; 13 Node passed; JavaScript syntax and staged whitespace passed.
+- Used isolated publication checkouts; main and running services unchanged.
+- Excluded credentials, saved runs, caches and session-derived effectiveness report.
+- Configured-credential comparison and staged-blob scans found no secret matches.
+- Added CommonJS boundary and root CI covering copy regressions; normalized trailing
+  whitespace in historical test logs only in the selector publication snapshot.
+- Documentation follow-up records this completed publication. Earlier unpublished
+  status entries below are historical, not current. No PR, merge or GitHub Release.
+
 ## 2026-10-06 — Output copy controls
 
 ### Scope and sequence
