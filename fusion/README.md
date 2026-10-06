@@ -5,6 +5,12 @@
 See [October 6 publication snapshot](docs/PUBLICATION_2026-10-06.md) for this release, test results, exclusions, and historical-status clarification.
 
 
+## Verified GitHub publication
+
+Current version: https://github.com/ebarber79/fusion-harness/tree/release/fusion-current/fusion
+
+See [publication record](docs/PUBLICATION_2026-10-06.md) and [CHANGELOG.md](CHANGELOG.md) for tests, exclusions and exact publication scope.
+
 ## Output copying and change documentation
 
 Each output panel has a small Copy button beside its title. Click it to copy the full output text without highlighting. Empty outputs disable the button; successful copying shows “Copied!”. If browser clipboard permissions block copying, the UI reports the problem and manual selection remains available. Refresh the page (Ctrl+Shift+R if needed) to load updated controls.

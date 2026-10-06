@@ -3,6 +3,22 @@
 Application: http://localhost:8765/
 Project: `/home/siegepi10/fusion`
 
+## 2026-10-06 — GitHub publication verified
+
+- Published current source/tests and prior copy-control documentation to
+  https://github.com/ebarber79/fusion-harness/tree/release/fusion-current/fusion.
+- Runtime release commit: `8cd6661510a1a5afb1b52408282d2b97de6888e2`. Remote branch SHA verified after push.
+- GitHub Actions passed on Python 3.11 and 3.13 / Node 22:
+  https://github.com/ebarber79/fusion-harness/actions/runs/37460283556.
+- Local verification: 16 Python and 5 Node tests passed; JavaScript syntax and staged whitespace passed.
+- Used isolated publication checkouts; main and running services unchanged.
+- Excluded credentials, saved runs, caches and session-derived effectiveness report.
+- Configured-credential comparison and staged-blob scans found no secret matches.
+- Added CommonJS boundary and root CI covering copy regressions; normalized trailing
+  whitespace in historical test logs only in the selector publication snapshot.
+- Documentation follow-up records this completed publication. Earlier unpublished
+  status entries below are historical, not current. No PR, merge or GitHub Release.
+
 ## 2026-10-06 — Output copy controls
 
 ### Scope and sequence
