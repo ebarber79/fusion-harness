@@ -15,6 +15,13 @@ IDS = ['grok-code-fast-1', 'grok-4.3', 'grok-4.5', 'grok-4.6', 'grok-4.7',
 
 class XAI(unittest.TestCase):
     def setUp(self):
+        for name in ['fetch_openai_models', 'fetch_perplexity_models']:
+            mock = patch('fusion.' + name, side_effect=RuntimeError('offline'))
+            mock.start()
+            self.addCleanup(mock.stop)
+        mock = patch('fusion.fetch_anthropic_models', create=True, side_effect=RuntimeError('offline'))
+        mock.start()
+        self.addCleanup(mock.stop)
         self.pplx = patch('fusion.fetch_perplexity_models', side_effect=RuntimeError('offline'))
         self.pplx.start()
         self.addCleanup(self.pplx.stop)

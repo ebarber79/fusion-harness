@@ -1,0 +1,59 @@
+UI behavior checks passed (providers, Claude architect, usage, four-stage analysis lifecycle, identity, history and reset)
+TAP version 13
+# Subtest: existing UI behavior checks
+ok 1 - existing UI behavior checks
+  ---
+  duration_ms: 24.200151
+  type: 'test'
+  ...
+# Subtest: reload: saved architect overrides conflicting historical architect only
+ok 2 - reload: saved architect overrides conflicting historical architect only
+  ---
+  duration_ms: 2.378709
+  type: 'test'
+  ...
+# Subtest: reload: saved fallback model overrides conflicting historical model only
+ok 3 - reload: saved fallback model overrides conflicting historical model only
+  ---
+  duration_ms: 1.815426
+  type: 'test'
+  ...
+# Subtest: reload: saved disabled fallback overrides historical enabled only
+ok 4 - reload: saved disabled fallback overrides historical enabled only
+  ---
+  duration_ms: 1.805777
+  type: 'test'
+  ...
+# Subtest: reload: all saved next-run preferences override historical options
+ok 5 - reload: all saved next-run preferences override historical options
+  ---
+  duration_ms: 1.651683
+  type: 'test'
+  ...
+# Subtest: reload: absent saved preferences restore legacy historical options
+ok 6 - reload: absent saved preferences restore legacy historical options
+  ---
+  duration_ms: 1.584571
+  type: 'test'
+  ...
+# Subtest: reload: empty saved preferences restore legacy historical options
+ok 7 - reload: empty saved preferences restore legacy historical options
+  ---
+  duration_ms: 1.670406
+  type: 'test'
+  ...
+# Subtest: markup has one architect dropdown, named GPT entry, and no backup selector
+ok 8 - markup has one architect dropdown, named GPT entry, and no backup selector
+  ---
+  duration_ms: 0.368911
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 55.131629

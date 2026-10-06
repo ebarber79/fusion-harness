@@ -1,0 +1,27 @@
+test_authenticated_bounded_filtered_catalog (test_openai_catalog.OpenAICatalog.test_authenticated_bounded_filtered_catalog) ... FAIL
+
+======================================================================
+FAIL: test_authenticated_bounded_filtered_catalog (test_openai_catalog.OpenAICatalog.test_authenticated_bounded_filtered_catalog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 40, in test_authenticated_bounded_filtered_catalog
+    self.assertEqual(result, {'data': [{'id': name} for name in sorted(TEXT)]})
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'dat[61 chars]gpt-4o'}, {'id': 'gpt-4o-mini-2024-07-18'}, {'[150 chars]i'}]} != {'dat[61 chars]gpt-4.5-preview'}, {'id': 'gpt-4o'}, {'id': 'g[114 chars]i'}]}
+  {'data': [{'id': 'codex-mini-latest'},
+            {'id': 'gpt-4.1'},
++           {'id': 'gpt-4.5-preview'},
+            {'id': 'gpt-4o'},
+            {'id': 'gpt-4o-mini-2024-07-18'},
+            {'id': 'gpt-5-codex'},
+            {'id': 'gpt-5.5'},
+            {'id': 'o1'},
+-           {'id': 'o1-mini-2024-09-12'},
+-           {'id': 'o1-preview-2024-09-12'},
+            {'id': 'o3-mini'},
+            {'id': 'o4-mini'}]}
+
+----------------------------------------------------------------------
+Ran 1 test in 0.005s
+
+FAILED (failures=1)

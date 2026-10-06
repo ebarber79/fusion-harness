@@ -10,9 +10,20 @@ class Element {
   appendChild(child) { this.children.push(child); if (!this._value) this._value = child.value; }
   addEventListener(name, callback) { this.handlers[name] = callback; }
 }
+const markup = fs.readFileSync('static/index.html', 'utf8');
+const markupIds = new Set([...markup.matchAll(/id="([^"]+)"/g)].map(m => m[1]));
+function markupElement(elements, id) {
+  assert.ok(markupIds.has(id), `Missing real markup element: ${id}`);
+  if (!elements.has(id)) {
+    const element = new Element();
+    if (id === 'openai-model') element.value = 'gpt-5.5';
+    elements.set(id, element);
+  }
+  return elements.get(id);
+}
 async function main() {
   const elements = new Map();
-  const el = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
+  const el = id => markupElement(elements, id);
   let models = {models: [{name: 'a'}, {name: 'b', size_label: '1.0 GiB'}], default: 'a'};
   let job = null;
   let failModels = false;
@@ -35,7 +46,11 @@ async function main() {
   vm.runInContext(fs.readFileSync('static/app.js', 'utf8'), ctx);
   const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
   await flush();
-  assert.doesNotMatch(el('architect-models-status').textContent, /Claude|Anthropic/i, 'Only OpenAI architecture remains');
+  assert.match(el('architect-model').children[0].textContent, /ChatGPT \/ OpenAI — gpt-5\.5/);
+  el('openai-model').value = 'gpt-next'; el('openai-model').handlers.input();
+  assert.match(el('architect-model').children[0].textContent, /ChatGPT \/ OpenAI — gpt-next/);
+  assert.match(el('architect-models-status').textContent, /OpenAI.*default/);
+  assert.equal(el('architect-fallback-enabled').checked, false, 'Unverified Claude cannot enable fallback');
   assert.equal(el('ollama-model').children.length, 2, 'Installed models must populate dropdown');
   assert.equal(el('ollama-model').value, 'a');
   assert.equal(el('run').disabled, false);
@@ -198,6 +213,9 @@ async function main() {
   vm.runInContext('loaded = false', ctx);
   await vm.runInContext('poll()', ctx);
   assert.equal(el('architect-model').value, 'openai:custom', 'Explicit OpenAI architect is restored without changing synthesis');
+  el('openai-model').value = 'synth-next'; el('openai-model').handlers.input();
+  assert.equal(el('architect-model').value, 'openai:custom', 'Editing synthesis does not change explicit architect');
+  assert.match(el('architect-model').children[0].textContent, /ChatGPT \/ OpenAI — synth-next/);
   el('architect-model').value = 'openai:default';
   el('architect-model').handlers.change();
   assert.match(el('architect-provider').textContent, /OpenAI.*custom/, 'Stage metadata remains independent of next selection');
@@ -233,6 +251,123 @@ async function main() {
   job = null;
   await vm.runInContext('poll()', ctx);
   assert.equal(el('analysis-output').textContent, '');
-  console.log('UI behavior checks passed (providers, usage, four-stage analysis lifecycle, identity, history and reset)');
+  const openai = {name:'o3', value:'openai:o3', provider:'openai', verified:true, selectable:true};
+  models = {models:[{name:'a'}], default:'a', architects:[openai, {...openai}, {...openai, name:'gpt-image-1', value:'openai:gpt-image-1'}, {...openai, name:'gpt-5', value:'openai:gpt-5', verified:false}], providers:{openai:{status:'available'}}};
+  vm.runInContext('preferredModel = null', ctx);
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-model').children.filter(c=>c.value==='openai:o3').length, 1, 'Verified OpenAI suite populates the single dropdown, deduplicated');
+  assert.equal(el('architect-model').children.some(c=>c.value==='openai:gpt-image-1' || c.value==='openai:gpt-5'), false);
+  el('architect-model').value='openai:o3'; el('architect-model').handlers.change();
+  el('openai-model').value='synth-independent'; el('openai-model').handlers.input();
+  holdModels=true;
+  const architectRefresh=el('refresh-models').handlers.click(); await flush();
+  assert.equal(el('architect-model').disabled, true);
+  assert.match(el('architect-models-status').textContent, /Loading/);
+  resolveModels(); holdModels=false; await architectRefresh;
+  assert.equal(el('architect-model').value, 'openai:o3', 'Refresh preserves explicit architect independently of synthesis');
+  await el('run-form').handlers.submit({preventDefault(){}});
+  assert.equal(runs.at(-1).architect_model, 'openai:o3');
+  assert.equal(runs.at(-1).openai_model, 'synth-independent');
+  models.architects=[]; models.providers.openai={status:'unavailable', error:'secret'};
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-model').value, 'openai:o3', 'Catalog outage preserves restored OpenAI override');
+  assert.match(el('architect-models-status').textContent, /OpenAI catalog unavailable/);
+  assert.doesNotMatch(el('architect-models-status').textContent, /secret/);
+  el('architect-model').value='openai:default'; el('architect-model').handlers.change();
+  assert.equal(el('run').disabled, false, 'Catalog outage cannot disable default OpenAI');
+  const claude = {name:'claude-test', value:'anthropic:claude-test', provider:'anthropic', verified:true, selectable:true};
+  models = {models:[{name:'a'}], default:'a', architects:[claude], providers:{anthropic:{status:'available'}}};
+  vm.runInContext("preferredModel = null", ctx);
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-fallback-enabled').checked, true, 'Verified Claude enables fallback by default');
+  assert.match(el('architect-fallback-status').textContent, /Automatic backup: claude-test/);
+  assert.match(el('architect-fallback-status').textContent, /prompt.*Claude.*latency.*cost/i);
+  el('architect-fallback-enabled').checked = false; el('architect-fallback-enabled').handlers.change();
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-fallback-enabled').checked, false, 'Explicit disabled choice survives refresh');
+  el('architect-fallback-enabled').checked = true; el('architect-fallback-enabled').handlers.change();
+  await el('run-form').handlers.submit({preventDefault(){}});
+  assert.equal(runs.at(-1).architect_fallback_enabled, true);
+  assert.equal(runs.at(-1).architect_fallback_model, claude.value);
+  job = {status:'completed', config:{prompt:'task',openai_model:'synth',ollama_model:'a',architect_fallback_enabled:true,architect_fallback_model:claude.value}, stages:[{name:'architect',provider:'anthropic',model:'claude-actual',fallback_used:true,original_provider:'openai',original_model:'synth',primary_failure:{error:'Primary request failed.',usage:{total_tokens:2}},status:'completed',output:'design',error:''}]};
+  vm.runInContext('loaded = false', ctx); await vm.runInContext('poll()',ctx);
+  assert.match(el('architect-provider').textContent, /Claude.*fallback.*OpenAI/i);
+  assert.match(el('architect-usage').textContent, /failed.*Total 2/i);
+  assert.equal(el('architect-fallback-enabled').checked,true,'Saved fallback enabled restores');
+  assert.match(el('architect-fallback-status').textContent, /Automatic backup: claude-test/);
+  assert.equal(el('architect-model').value,'openai:default','Fallback output does not change next architect');
+  assert.equal(el('architect-model').children.some(c=>c.value===claude.value), true, 'Verified Claude architect is offered');
+  assert.equal(el('ollama-model').children.some(c=>c.value===claude.value), false, 'Claude is never a builder');
+  el('architect-model').value=claude.value; el('architect-model').handlers.change();
+  assert.equal(el('architect-fallback-enabled').disabled, true);
+  assert.equal(el('architect-fallback-enabled').checked, false);
+  assert.match(el('architect-selection').textContent, /Claude.*billing/);
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-model').value, claude.value, 'Refresh preserves Claude');
+  await el('run-form').handlers.submit({preventDefault(){}});
+  assert.equal(runs.at(-1).architect_model, claude.value);
+  assert.equal(runs.at(-1).architect_fallback_enabled, false, 'Explicit Claude never enables fallback');
+  job={status:'completed', config:{prompt:'task',openai_model:'synth',ollama_model:'a',architect_model:claude.value}, stages:[{name:'architect', provider:'anthropic',model:'claude-actual',status:'completed',error:'',output:'design'},{name:'synthesis',provider:'openai',model:'synth',status:'completed',error:'',output:'answer'}]};
+  vm.runInContext('loaded = false', ctx); await vm.runInContext('poll()', ctx);
+  assert.equal(el('architect-model').value, claude.value, 'Saved Claude restores');
+  assert.match(el('architect-provider').textContent, /Claude.*claude-actual/);
+  models.architects=[]; models.providers.anthropic.status='unavailable';
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-model').value, '', 'Unavailable Claude needs explicit reselection');
+  assert.equal(el('run').disabled, true);
+  assert.match(el('architect-models-status').textContent, /choose.*architect/i);
+  assert.match(el('architect-provider').textContent, /Claude.*claude-actual/, 'Saved identity survives catalog loss');
+  el('architect-model').value='openai:default'; el('architect-model').handlers.change();
+  assert.equal(el('run').disabled, false, 'OpenAI default works without Claude');
+  assert.match(el('architect-provider').textContent, /Claude.*claude-actual/, 'Next selection cannot relabel saved output');
+  models.architects = [claude, {name:'claude-unverified',value:'anthropic:claude-unverified',provider:'anthropic',verified:false,selectable:true}];
+  vm.runInContext("preferredFallback = 'anthropic:claude-missing'; fallbackPreference = true", ctx);
+  await el('refresh-models').handlers.click();
+  assert.equal(el('architect-model').children.some(c => c.value === 'anthropic:claude-unverified'), false);
+  assert.equal(el('architect-fallback-enabled').disabled, true, 'Missing previous backup does not silently switch');
+  assert.equal(el('architect-fallback-enabled').checked, false);
+  assert.match(el('architect-fallback-status').textContent, /Previous backup unavailable/);
+  await el('run-form').handlers.submit({preventDefault(){}});
+  assert.equal(runs.at(-1).architect_fallback_enabled, false);
+  assert.equal(Object.hasOwn(runs.at(-1), 'architect_fallback_model'), false, 'Unavailable backup is never submitted');
+  console.log('UI behavior checks passed (providers, Claude architect, usage, four-stage analysis lifecycle, identity, history and reset)');
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+const test = require('node:test');
+test('existing UI behavior checks', main);
+
+async function reloadOptions(saved) {
+  const elements = new Map();
+  const el = id => markupElement(elements, id);
+  const historical = {architect: 'openai:historical', model: 'anthropic:claude-old', enabled: true};
+  const job = {status: 'completed', config: {prompt: 'historical task', openai_model: 'synth', ollama_model: 'a',
+    architect_model: historical.architect, architect_fallback_model: historical.model,
+    architect_fallback_enabled: historical.enabled}, stages: [
+    {name: 'architect', provider: 'openai', model: 'historical', status: 'completed', output: 'old design', error: ''}]};
+  const models = {models: [{name: 'a'}], default: 'a', architects: ['claude-old', 'claude-next'].map(name =>
+    ({name, value: 'anthropic:' + name, provider: 'anthropic', verified: true, selectable: true}))};
+  const storage = saved === null ? null : JSON.stringify(saved);
+  const ctx = vm.createContext({document: {getElementById: el, createElement: () => new Element()},
+    localStorage: {getItem: () => storage, setItem: () => {}},
+    setTimeout: () => 1, clearTimeout: () => {},
+    fetch: async path => ({ok: true, json: async () => path === '/api/models' ? models : {job}})});
+  vm.runInContext(fs.readFileSync('static/app.js', 'utf8'), ctx);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  const expected = {...historical, ...saved};
+  assert.equal(el('architect-model').value, expected.architect, 'Next architect preference wins independently');
+  assert.ok(el('architect-fallback-status').textContent.includes('Automatic backup: ' + expected.model.replace('anthropic:', '')), 'Next fallback model preference wins independently');
+  assert.equal(el('architect-fallback-enabled').checked, expected.enabled, 'Next fallback toggle preference wins independently');
+  assert.match(el('architect-provider').textContent, /OpenAI.*historical/, 'Historical output identity is unchanged');
+  assert.equal(el('architect-output').textContent, 'old design');
+}
+test('reload: saved architect overrides conflicting historical architect only', () => reloadOptions({architect: 'openai:next'}));
+test('reload: saved fallback model overrides conflicting historical model only', () => reloadOptions({model: 'anthropic:claude-next'}));
+test('reload: saved disabled fallback overrides historical enabled only', () => reloadOptions({enabled: false}));
+test('reload: all saved next-run preferences override historical options', () => reloadOptions({architect: 'openai:next', model: 'anthropic:claude-next', enabled: false}));
+test('reload: absent saved preferences restore legacy historical options', () => reloadOptions(null));
+test('reload: empty saved preferences restore legacy historical options', () => reloadOptions({}));
+test('markup has one architect dropdown, named GPT entry, and no backup selector', () => {
+  assert.equal([...markup.matchAll(/<select\b[^>]*id="architect-model"/g)].length, 1);
+  assert.ok(!markup.includes('architect-fallback-model'));
+  assert.match(markup, /ChatGPT \/ OpenAI — gpt-5\.5/);
+  assert.match(markup, /OpenAI model \(synthesis \+ analysis only\)/);
+});

@@ -28,5 +28,11 @@ h2 { font-size: 17px; margin: 0; }
 h2 span { display: block; color: #a9b7cd; font-size: 12px; margin-top: 8px; font-weight: 400; }
 .stage-status { color: #79ddc9; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
 pre { font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 230px; max-height: 70vh; overflow: auto; }
+.panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.panel-heading h2 { min-width: 0; overflow-wrap: anywhere; }
+.output-tools { display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 6px; flex: 0 0 auto; max-width: 110px; }
+.output-tools span { color: #a9b7cd; font-size: 12px; text-align: right; }
+.copy-output { padding: 6px 12px; font-size: 12px; border: 1px solid #4b5871; background: #252e40; color: #edf0f8; }
+.copy-output:hover:not(:disabled) { border-color: #79ddc9; color: #79ddc9; }
 .footnote { color: #a9b7cd; font-size: 13px; line-height: 1.6; }
 @media (max-width: 850px) { .panels, .models { grid-template-columns: 1fr; } pre { min-height: 140px; } }

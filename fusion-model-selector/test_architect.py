@@ -5,6 +5,13 @@ from unittest.mock import patch
 import fusion
 
 class Architect(unittest.TestCase):
+    def setUp(self):
+        mock = patch('fusion.fetch_openai_models', side_effect=RuntimeError('offline'))
+        mock.start()
+        self.addCleanup(mock.stop)
+        mock = patch('fusion.fetch_anthropic_models', create=True, side_effect=RuntimeError('offline'))
+        mock.start()
+        self.addCleanup(mock.stop)
     def test_validation(self):
         for value in ['gpt-custom', 'openai:gpt-custom']:
             self.assertEqual(fusion.validate_request({'prompt': 'task', 'architect_model': value})['architect_model'], value)
@@ -46,7 +53,7 @@ class Architect(unittest.TestCase):
         html = (fusion.ROOT/'static/index.html').read_text()
         for identifier in ['architect-model', 'architect-provider', 'synthesis-provider', 'architect-models-status']:
             self.assertIn('id="'+identifier+'"', html)
-        self.assertIn('OpenAI model (synthesis + analysis + default OpenAI architect)', html)
+        self.assertIn('OpenAI model (synthesis + analysis only)', html)
         self.assertIn('Builder model · Ollama local / Grok cloud', html)
         self.assertIn('sent to OpenAI for architecture', html)
 

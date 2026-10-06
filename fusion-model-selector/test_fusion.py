@@ -191,14 +191,15 @@ if importlib.util.find_spec('fusion'):
             from unittest.mock import MagicMock
             response = MagicMock()
             response.__enter__.return_value = response
-            response.read.return_value = b'x' * (fusion.MAX_RESPONSE + 1)
+            response.read1.side_effect = [b'x' * min(65536, fusion.MAX_RESPONSE + 1 - offset) for offset in range(0, fusion.MAX_RESPONSE + 1, 65536)]
             opener = MagicMock()
             opener.open.return_value = response
             with patch('fusion.urllib.request.build_opener', return_value=opener) as build:
                 with self.assertRaises(fusion.ProviderError):
                     fusion.transport('http://127.0.0.1:11434/api/generate', {}, {}, 1)
             self.assertEqual(build.call_args.args[0].proxies, {})
-            response.read.assert_called_once_with(fusion.MAX_RESPONSE + 1)
+            self.assertEqual(sum(call.args[0] for call in response.read1.call_args_list), fusion.MAX_RESPONSE + 1)
+            self.assertTrue(all(0 < call.args[0] <= 65536 for call in response.read1.call_args_list))
 
         def test_redirects_rejected(self):
             with self.assertRaises(fusion.ProviderError):

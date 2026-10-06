@@ -1,0 +1,1 @@
+UI behavior checks passed (providers, Claude architect, usage, four-stage analysis lifecycle, identity, history and reset)

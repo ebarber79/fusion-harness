@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import threading
+import time
 
 import urllib.error
 import urllib.parse
@@ -30,7 +31,7 @@ class ProviderError(Exception):
 
 
 def validate_request(data):
-    if not isinstance(data, dict) or set(data) - {'prompt', 'openai_model', 'ollama_model', 'architect_model'}:
+    if not isinstance(data, dict) or set(data) - {'prompt', 'openai_model', 'ollama_model', 'architect_model', 'architect_fallback_enabled', 'architect_fallback_model'}:
         raise ValueError('Expected prompt and optional model names only.')
     prompt = data.get('prompt')
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT:
@@ -42,9 +43,25 @@ def validate_request(data):
             raise ValueError('Model names must be 1–128 letters, digits, or . _ : / - characters.')
         result[field] = value
     builder_selection(result['ollama_model'])
+    if result['openai_model'].startswith('anthropic:'):
+        raise ValueError('Claude is supported only as architect.')
     if 'architect_model' in data:
-        architect_selection(data['architect_model'])
+        provider, model = architect_selection(data['architect_model'])
+        if provider == 'anthropic' and not anthropic_available(model):
+            raise ValueError('Select a catalog-verified Claude architect.')
         result['architect_model'] = data['architect_model']
+        # Preserve the sentinel in saved config; resolve only for the running stage.
+    if 'architect_fallback_enabled' in data:
+        if not isinstance(data['architect_fallback_enabled'], bool):
+            raise ValueError('Fallback enabled must be a boolean.')
+        result['architect_fallback_enabled'] = data['architect_fallback_enabled']
+    if 'architect_fallback_model' in data:
+        provider, model = architect_selection(data['architect_fallback_model'])
+        if provider != 'anthropic':
+            raise ValueError('Fallback must select Claude.')
+        result['architect_fallback_model'] = data['architect_fallback_model']
+    if result.get('architect_fallback_enabled') and 'architect_fallback_model' not in result:
+        raise ValueError('Select an explicit Claude fallback model.')
     return result
 
 
@@ -85,11 +102,27 @@ def transport(url, payload, headers, timeout):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     request = urllib.request.Request(url, json.dumps(payload).encode(),
                                      {'Content-Type': 'application/json', **headers}, method='POST')
+    deadline = time.monotonic() + timeout
+    chunks, size = [], 0
     with opener.open(request, timeout=timeout) as response:
-        body = response.read(MAX_RESPONSE + 1)
-    if len(body) > MAX_RESPONSE:
-        raise ProviderError('Provider response exceeded the size limit.')
-    return json.loads(body)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProviderError('Provider request deadline exceeded.')
+            raw = getattr(getattr(response, 'fp', None), 'raw', None)
+            sock = getattr(raw, '_sock', None)
+            if sock is not None:
+                sock.settimeout(remaining)
+            chunk = response.read1(min(65536, MAX_RESPONSE + 1 - size))
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_RESPONSE:
+                raise ProviderError('Provider response exceeded the size limit.')
+            chunks.append(chunk)
+    if time.monotonic() > deadline:
+        raise ProviderError('Provider request deadline exceeded.')
+    return json.loads(b''.join(chunks))
 
 
 MAX_MODEL_RESPONSE = 1024 * 1024
@@ -152,13 +185,169 @@ def is_grok_text_model(name):
                         ('imagine', 'image', 'video', 'voice', 'tts', 'transcrib', 'audio', 'multi-agent', 'multi_agent', 'multiagent')))
 
 
+OPENAI_UNSUPPORTED = re.compile(
+    r'image|audio|realtime|transcrib|tts|whisper|embedding|moderation|'
+    r'deep-research|search|instruct|gpt-oss', re.IGNORECASE)
+
+
+def unsupported_openai_model(model):
+    return (OPENAI_UNSUPPORTED.search(model) is not None
+            or model in {'gpt-4', 'gpt-4-0314', 'gpt-4-0613', 'o1-preview', 'o1-mini'}
+            or model.startswith(('gpt-3.5-', 'gpt-4-turbo', 'gpt-4-0125', 'gpt-4-1106',
+                                 'o1-preview-', 'o1-mini-', 'chatgpt-', 'babbage-', 'davinci-', 'text-', 'dall-e-')))
+
+
+def is_openai_text_model(model):
+    """Responses-compatible text families only; catalog membership is still required.
+
+    /models exposes IDs, not capabilities. Omit specialized/legacy endpoints and
+    tool-dependent models instead of claiming every returned ID can generate here.
+    """
+    return (isinstance(model, str)
+            and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,119}', model) is not None
+            and not unsupported_openai_model(model)
+            and (re.match(r'gpt-(?:4o|4\.[1-9][0-9]*|[5-9][0-9]*(?:\.[0-9]+)?)(?:-|$)', model) is not None
+                 or re.match(r'o[1-9][0-9]*(?:-|$)', model) is not None
+                 or model == 'codex-mini-latest'))
+
+
+def fetch_openai_models():
+    """Fixed authenticated GET, no proxies/redirects; bounded bytes/items/wall time."""
+    try:
+        deadline = time.monotonic() + 10
+        key = load_key()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        request = urllib.request.Request('https://api.openai.com/v1/models',
+                                         headers={'Authorization': 'Bearer ' + key}, method='GET')
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError('Deadline')
+        chunks, size = [], 0
+        with opener.open(request, timeout=min(5, remaining)) as response:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError('Deadline')
+                sock = getattr(getattr(getattr(response, 'fp', None), 'raw', None), '_sock', None)
+                if sock is not None:
+                    sock.settimeout(min(5, remaining))
+                chunk = response.read1(min(65536, MAX_MODEL_RESPONSE + 1 - size))
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_MODEL_RESPONSE:
+                    raise ValueError('Size limit')
+                chunks.append(chunk)
+        if time.monotonic() > deadline:
+            raise ValueError('Deadline')
+        data = json.loads(b''.join(chunks))
+        if not isinstance(data, dict) or not isinstance(data.get('data'), list) or len(data['data']) > 2000:
+            raise ValueError('Invalid catalog')
+        names = sorted({item.get('id') for item in data['data'] if isinstance(item, dict)
+                        and is_openai_text_model(item.get('id')) and key not in item['id']})
+        return {'data': [{'id': name} for name in names]}
+    except Exception:
+        raise ProviderError('OpenAI catalog unavailable; configure a valid server-side key and refresh.') from None
+
+
 def architect_selection(value):
     if not isinstance(value, str) or not MODEL_NAME.fullmatch(value):
         raise ValueError('Select a valid architect model.')
+    if value.startswith('anthropic:'):
+        model = value[len('anthropic:'):]
+        if not is_claude_model(model):
+            raise ValueError('Select a valid Claude architect model.')
+        return 'anthropic', model
     model = value[7:] if value.startswith('openai:') else value
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./-]{0,127}', model):
-        raise ValueError('Select an OpenAI architect model.')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./-]{0,127}', model) or unsupported_openai_model(model):
+        raise ValueError('Select a supported OpenAI text architect model.')
     return 'openai', model
+
+
+def configured_architect(config):
+    value = config.get('architect_model', 'openai:default')
+    return architect_selection(config['openai_model'] if value == 'openai:default' else value)
+
+
+def is_claude_model(model):
+    return (isinstance(model, str) and re.fullmatch(r'claude-[A-Za-z0-9][A-Za-z0-9_.-]{0,99}', model) is not None
+            and not any(word in model.lower() for word in ('image', 'audio', 'embedding', 'video')))
+
+
+def load_anthropic_key():
+    key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+    if not key:
+        try:
+            with (Path.home()/'.config/fusion/anthropic.key').open() as stream:
+                key = stream.read(4097).strip()
+        except (OSError, UnicodeError):
+            raise ProviderError('Anthropic key is not configured.') from None
+    if not key or len(key) > 4096 or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in key):
+        raise ProviderError('Anthropic key configuration is invalid.')
+    return key
+
+
+def fetch_anthropic_models():
+    """Authenticated IDs only; bounded pagination, bytes, items and wall time."""
+    try:
+        started = time.monotonic()
+        key = load_anthropic_key()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        names, cursors = set(), set()
+        cursor, total_bytes, total_items = None, 0, 0
+        for _ in range(5):
+            remaining = 10 - (time.monotonic() - started)
+            if remaining <= 0:
+                raise ValueError('Deadline')
+            url = 'https://api.anthropic.com/v1/models'
+            if cursor:
+                url += '?' + urllib.parse.urlencode({'after_id': cursor})
+            request = urllib.request.Request(url, headers={'x-api-key': key, 'anthropic-version': '2023-06-01'}, method='GET')
+            chunks = []
+            with opener.open(request, timeout=min(5, remaining)) as response:
+                while True:
+                    remaining = 10 - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise ValueError('Deadline')
+                    raw = getattr(getattr(response, 'fp', None), 'raw', None)
+                    sock = getattr(raw, '_sock', None)
+                    if sock is not None:
+                        sock.settimeout(min(5, remaining))
+                    chunk = response.read1(min(65536, MAX_MODEL_RESPONSE + 1 - total_bytes))
+                    if not chunk:
+                        break
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_MODEL_RESPONSE:
+                        raise ValueError('Size limit')
+                    chunks.append(chunk)
+            page = json.loads(b''.join(chunks))
+            if (not isinstance(page, dict) or not isinstance(page.get('data'), list)
+                    or not isinstance(page.get('has_more'), bool)):
+                raise ValueError('Invalid catalog')
+            total_items += len(page['data'])
+            if total_items > 500:
+                raise ValueError('Item limit')
+            for item in page['data']:
+                model = item.get('id') if isinstance(item, dict) else None
+                if is_claude_model(model) and key not in model:
+                    names.add(model)
+            if not page['has_more']:
+                return {'data': [{'id': name} for name in sorted(names)]}
+            cursor = page.get('last_id')
+            if (not is_claude_model(cursor) or key in cursor or cursor in cursors
+                    or not any(isinstance(item, dict) and item.get('id') == cursor for item in page['data'])):
+                raise ValueError('Invalid cursor')
+            cursors.add(cursor)
+        raise ValueError('Page limit')
+    except Exception:
+        raise ProviderError('Anthropic catalog unavailable; configure a valid server-side key and refresh.') from None
+
+
+def anthropic_available(model):
+    try:
+        return is_claude_model(model) and any(item.get('id') == model for item in fetch_anthropic_models()['data'] if isinstance(item, dict))
+    except Exception:
+        return False
 
 
 PERPLEXITY_DOCUMENTED_MODELS = ('perplexity/sonar',)
@@ -340,6 +529,26 @@ def builder_catalog():
     default_builder = local['default'] or next((m['value'] for m in builders if m['selectable']), None)
     architects = [{'name': 'OpenAI default', 'provider': 'openai', 'value': 'openai:default',
                    'selectable': True, 'verified': True, 'status': 'default'}]
+    try:
+        names = sorted({item.get('id') for item in fetch_openai_models()['data']
+                        if isinstance(item, dict) and is_openai_text_model(item.get('id'))})
+        providers['openai'] = {'status': 'available' if names else 'unavailable',
+                               'error': '' if names else 'No supported OpenAI text models in the authenticated catalog.'}
+    except Exception:
+        names = []
+        providers['openai'] = {'status': 'unavailable', 'error':
+            'OpenAI catalog unavailable; configure a valid server-side key and refresh. Default OpenAI remains available.'}
+    architects.extend({'name': name, 'provider': 'openai', 'value': 'openai:' + name,
+                       'verified': True, 'selectable': True, 'status': 'catalog'} for name in names)
+    try:
+        names = sorted({item.get('id') for item in fetch_anthropic_models()['data']
+                        if isinstance(item, dict) and is_claude_model(item.get('id'))})
+        providers['anthropic'] = {'status': 'available' if names else 'unavailable', 'error': '' if names else 'No Claude models available in the authenticated catalog.'}
+    except Exception:
+        names = []
+        providers['anthropic'] = {'status': 'unavailable', 'error': 'Claude catalog unavailable; configure a valid server-side Anthropic key and refresh.'}
+    architects.extend({'name': name, 'provider': 'anthropic', 'value': 'anthropic:' + name,
+                       'verified': True, 'selectable': True, 'status': 'catalog'} for name in names)
     return {**local, 'builders': builders, 'default_builder': default_builder, 'providers': providers,
             'architects': architects, 'default_architect': 'openai:default'}
 
@@ -361,6 +570,13 @@ def normalize_usage(usage=None):
 def provider_usage(provider, data):
     usage = data.get('usage')
     usage = usage if isinstance(usage, dict) else {}
+    if provider == 'anthropic':
+        parts = [token_count(usage.get(field)) for field in ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')]
+        input_count = sum(parts) if all(part is not None for part in parts) else None
+        output_count = token_count(usage.get('output_tokens'))
+        return normalize_usage({'input_tokens': input_count, 'output_tokens': output_count,
+                                'cached_input_tokens': parts[1],
+                                'total_tokens': input_count + output_count if input_count is not None and output_count is not None else None})
     if provider == 'ollama':
         input_count = token_count(data.get('prompt_eval_count'))
         output_count = token_count(data.get('eval_count'))
@@ -387,8 +603,17 @@ def aggregate_usage(stages):
         if field in TOKEN_FIELDS[:3]:
             known[field] = len(counts)
     complete_stages = sum(all(usage[field] is not None for field in TOKEN_FIELDS[:3]) for usage in completed)
+    attempts = [normalize_usage(stage['primary_failure'].get('usage')) for stage in stages if stage.get('primary_failure')]
+    attempts.extend(normalize_usage(stage.get('usage')) for stage in stages if stage['status'] == 'error')
+    for field in TOKEN_FIELDS:
+        counts = [usage[field] for usage in attempts if usage[field] is not None]
+        if counts:
+            totals[field] = (totals[field] or 0) + sum(counts)
+    attempts_complete = all(all(usage[field] is not None for field in TOKEN_FIELDS[:3]) for usage in attempts)
     return {**totals, 'known_stages': known, 'complete_stages': complete_stages,
-            'stage_count': len(stages), 'complete': complete_stages == len(stages)}
+            'stage_count': len(stages), 'failed_attempt_count': len(attempts),
+            'failed_attempts_complete': attempts_complete,
+            'complete': complete_stages == len(stages) and attempts_complete}
 
 
 class ProviderText(str):
@@ -405,6 +630,7 @@ class Provider:
 
     def __call__(self, provider, model, instructions, input_text):
         key = None
+        data = {}
         try:
             if provider == 'openai':
                 key = load_key()
@@ -416,8 +642,25 @@ class Provider:
                                  if item.get('type') == 'message'
                                  for part in item.get('content', [])
                                  if part.get('type') == 'output_text')
-                if data.get('status') == 'incomplete' and text:
+                if data.get('status') == 'incomplete' and text.strip():
                     text += '\n\n[OpenAI response incomplete: output may be truncated.]'
+            elif provider == 'anthropic':
+                if not is_claude_model(model):
+                    raise ProviderError('Unsupported Claude model.')
+                key = load_anthropic_key()
+                data = self.send('https://api.anthropic.com/v1/messages', {
+                    'model': model, 'system': instructions,
+                    'messages': [{'role': 'user', 'content': input_text}], 'max_tokens': 4000,
+                }, {'x-api-key': key, 'anthropic-version': '2023-06-01'}, 180)
+                content = data.get('content')
+                if not isinstance(content, list):
+                    raise ProviderError('Invalid content.')
+                text = '\n'.join(part['text'] for part in content if isinstance(part, dict)
+                                 and part.get('type') == 'text' and isinstance(part.get('text'), str))
+                if not text.strip():
+                    raise ProviderError('Provider returned no text.')
+                if data.get('stop_reason') == 'max_tokens':
+                    text += '\n[Claude output reached its token limit; output may be truncated.]'
             elif provider == 'perplexity':
                 if model not in PERPLEXITY_DOCUMENTED_MODELS:
                     raise ProviderError('Unsupported Perplexity model.')
@@ -460,15 +703,21 @@ class Provider:
             if key:
                 text = text.replace(key, '[REDACTED]')
             result = ProviderText(text, provider_usage(provider, data))
-            if provider == 'perplexity':
+            if provider in ('openai', 'perplexity', 'anthropic'):
                 actual = data.get('model')
                 result.model = actual if isinstance(actual, str) and MODEL_NAME.fullmatch(actual) and key not in actual else model
                 result.provider = provider
-                result.sources = sources
+                if provider == 'perplexity':
+                    result.sources = sources
             return result
         except Exception:
             # Do not expose upstream error bodies, URLs, headers or exception strings.
-            raise ProviderError('Provider request failed; check key, model, connectivity and service availability.') from None
+            error = ProviderError('Provider request failed; check key, model, connectivity and service availability.')
+            error.usage = provider_usage(provider, data) if isinstance(data, dict) else normalize_usage()
+            actual = data.get('model') if isinstance(data, dict) else None
+            error.model = actual if isinstance(actual, str) and MODEL_NAME.fullmatch(actual) and (not key or key not in actual) else model
+            error.provider = provider
+            raise error from None
 
 
 STAGES = (
@@ -512,8 +761,8 @@ class Jobs:
             jid = uuid.uuid4().hex
             self.job = {'id': jid, 'status': 'running', 'config': config,
                         'stages': [{'name': name, 'status': 'pending', 'output': '', 'error': '', 'usage': normalize_usage(),
-                                    'provider': (architect_selection(config.get('architect_model', config['openai_model']))[0] if name == 'architect' else builder_selection(config[field])[0] if name == 'builder' else provider),
-                                    'model': (architect_selection(config.get('architect_model', config['openai_model']))[1] if name == 'architect' else builder_selection(config[field])[1] if name == 'builder' else config[field])}
+                                    'provider': (configured_architect(config)[0] if name == 'architect' else builder_selection(config[field])[0] if name == 'builder' else provider),
+                                    'model': (configured_architect(config)[1] if name == 'architect' else builder_selection(config[field])[1] if name == 'builder' else config[field])}
                                    for name, provider, field, _ in STAGES]}
             self.job['usage'] = aggregate_usage(self.job['stages'])
             threading.Thread(target=self._run, args=(jid, config), daemon=True).start()
@@ -531,27 +780,54 @@ class Jobs:
         for index, (name, provider, model_field, instructions) in enumerate(STAGES):
             model = config[model_field]
             if name == 'architect':
-                provider, model = architect_selection(config.get('architect_model', config['openai_model']))
+                provider, model = configured_architect(config)
             if name == 'builder':
                 provider, model = builder_selection(model)
             with self.lock:
                 self.job['stages'][index]['status'] = 'running'
+            attempt_metadata = {'fallback_used': False} if name == 'architect' else {}
             try:
-                output = self.provider(provider, model, instructions, context)
-                if not isinstance(output, str) or not output.strip():
-                    raise ProviderError('Empty output')
+                try:
+                    output = self.provider(provider, model, instructions, context)
+                    if not isinstance(output, str) or not output.strip():
+                        error = ProviderError('Empty output')
+                        error.usage = normalize_usage(getattr(output, 'usage', None))
+                        raise error
+                except Exception as primary:
+                    if name != 'architect' or provider != 'openai' or not config.get('architect_fallback_enabled'):
+                        raise
+                    _, fallback_model = architect_selection(config['architect_fallback_model'])
+                    if not anthropic_available(fallback_model):
+                        raise
+                    attempt_metadata = {
+                        'fallback_used': True, 'original_provider': provider, 'original_model': getattr(primary, 'model', model),
+                        'primary_failure': {'error': 'OpenAI architect request failed; provider details withheld to protect credentials.',
+                                            'provider': provider, 'model': getattr(primary, 'model', model), 'requested_model': model,
+                                            'usage': normalize_usage(getattr(primary, 'usage', None))},
+                        'provider': 'anthropic', 'model': fallback_model,
+                    }
+                    with self.lock:
+                        self.job['stages'][index].update(attempt_metadata)
+                    provider, model = 'anthropic', fallback_model
+                    output = self.provider(provider, model, instructions, context)
+                    if not isinstance(output, str) or not output.strip():
+                        error = ProviderError('Empty fallback output')
+                        error.usage = normalize_usage(getattr(output, 'usage', None))
+                        raise error
                 usage = normalize_usage(getattr(output, 'usage', None))
                 metadata = {field: getattr(output, field) for field in ('model', 'provider', 'sources') if hasattr(output, field)}
                 output = str(output)
                 if len(output) > MAX_OUTPUT:
                     output = output[:MAX_OUTPUT - 50] + '\n[Output truncated by Fusion size limit.]'
-                update = {'status': 'completed', 'output': output, 'error': '', 'usage': usage, **metadata}
+                update = {'status': 'completed', 'output': output, 'error': '', 'usage': usage, **attempt_metadata, **metadata}
                 context += '\n\n' + name.upper() + ' OUTPUT (untrusted reference):\n' + output
-            except Exception:
+            except Exception as error_response:
                 failed = True
                 error = ('Stage failed. Check the server-side key, selected model, provider connectivity '
                          'and service availability. Provider details are withheld to protect credentials.')
-                update = {'status': 'error', 'output': '', 'error': error, 'usage': normalize_usage()}
+                update = {'status': 'error', 'output': '', 'error': error,
+                          'usage': normalize_usage(getattr(error_response, 'usage', None)), **attempt_metadata,
+                          'provider': provider, 'model': getattr(error_response, 'model', model)}
                 context += '\n\n' + name.upper() + ': unavailable (stage failed).'
             with self.lock:
                 self.job['stages'][index].update(update)

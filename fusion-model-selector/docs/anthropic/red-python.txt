@@ -1,0 +1,310 @@
+test_catalog_pagination_security (test_anthropic.Anthropic.test_catalog_pagination_security) ... FAIL
+test_independent_catalog (test_anthropic.Anthropic.test_independent_catalog) ... FAIL
+test_key_precedence_and_validation (test_anthropic.Anthropic.test_key_precedence_and_validation) ... FAIL
+test_messages_text_redaction_metadata_and_usage (test_anthropic.Anthropic.test_messages_text_redaction_metadata_and_usage) ... ERROR
+test_routing_context_and_history (test_anthropic.Anthropic.test_routing_context_and_history) ... ERROR
+test_setup_hidden_safe_storage (test_anthropic.Anthropic.test_setup_hidden_safe_storage) ... ERROR
+test_usage_unknown_not_zero (test_anthropic.Anthropic.test_usage_unknown_not_zero) ... FAIL
+test_verified_only_architect_no_builder (test_anthropic.Anthropic.test_verified_only_architect_no_builder) ... ERROR
+test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) ...
+  test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': False, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0}) ... ERROR
+  test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0}) ... ERROR
+  test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at=set()) ... ERROR
+  test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={1, 2, 3}) ... ERROR
+  test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_model': 'anthropic:claude-test-1', 'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0}) ... ERROR
+test_empty_primary_falls_back (test_claude_fallback.Fallback.test_empty_primary_falls_back) ... ERROR
+test_failed_fallback_no_recursion (test_claude_fallback.Fallback.test_failed_fallback_no_recursion) ... ERROR
+test_failed_provider_response_retains_known_usage (test_claude_fallback.Fallback.test_failed_provider_response_retains_known_usage) ... ERROR
+test_markup_contract (test_claude_fallback.Fallback.test_markup_contract) ... FAIL
+test_narrow_validation (test_claude_fallback.Fallback.test_narrow_validation) ...
+  test_narrow_validation (test_claude_fallback.Fallback.test_narrow_validation) (fields={'openai_model': 'anthropic:claude-test-1'}) ... FAIL
+test_narrow_validation (test_claude_fallback.Fallback.test_narrow_validation) ... ERROR
+test_once_only_failed_openai_architect (test_claude_fallback.Fallback.test_once_only_failed_openai_architect) ... ERROR
+test_catalog_only_contains_supported_role_providers (test_provider_removal.SupportedProviders.test_catalog_only_contains_supported_role_providers) ... FAIL
+test_claude_architect_only (test_provider_removal.SupportedProviders.test_claude_architect_only) ... ERROR
+test_no_guessed_claude_fallback (test_provider_removal.SupportedProviders.test_no_guessed_claude_fallback) ... FAIL
+
+======================================================================
+ERROR: test_messages_text_redaction_metadata_and_usage (test_anthropic.Anthropic.test_messages_text_redaction_metadata_and_usage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 87, in test_messages_text_redaction_metadata_and_usage
+    result = fusion.Provider(send)('anthropic', MODEL, 'system rules', 'user context')
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 471, in __call__
+    raise ProviderError('Provider request failed; check key, model, connectivity and service availability.') from None
+fusion.ProviderError: Provider request failed; check key, model, connectivity and service availability.
+
+======================================================================
+ERROR: test_routing_context_and_history (test_anthropic.Anthropic.test_routing_context_and_history)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 132, in test_routing_context_and_history
+    jid=jobs.start({'prompt':'task', 'architect_model':'anthropic:'+MODEL, 'openai_model':'synth', 'ollama_model':'local'})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 46, in validate_request
+    architect_selection(data['architect_model'])
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 160, in architect_selection
+    raise ValueError('Select an OpenAI architect model.')
+ValueError: Select an OpenAI architect model.
+
+======================================================================
+ERROR: test_setup_hidden_safe_storage (test_anthropic.Anthropic.test_setup_hidden_safe_storage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 31, in test_setup_hidden_safe_storage
+    import setup_anthropic_key as setup
+ModuleNotFoundError: No module named 'setup_anthropic_key'
+
+======================================================================
+ERROR: test_verified_only_architect_no_builder (test_anthropic.Anthropic.test_verified_only_architect_no_builder)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 76, in test_verified_only_architect_no_builder
+    self.assertEqual(fusion.validate_request({'prompt':'task', 'architect_model':'anthropic:'+MODEL})['architect_model'], 'anthropic:'+MODEL)
+                     ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 46, in validate_request
+    architect_selection(data['architect_model'])
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 160, in architect_selection
+    raise ValueError('Select an OpenAI architect model.')
+ValueError: Select an OpenAI architect model.
+
+======================================================================
+ERROR: test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': False, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 54, in test_disabled_unavailable_success_and_other_stages_never_fallback
+    job,calls=self.run_job(request,fail_at=fail_at,catalog=catalog)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 54, in test_disabled_unavailable_success_and_other_stages_never_fallback
+    job,calls=self.run_job(request,fail_at=fail_at,catalog=catalog)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at=set())
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 54, in test_disabled_unavailable_success_and_other_stages_never_fallback
+    job,calls=self.run_job(request,fail_at=fail_at,catalog=catalog)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={1, 2, 3})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 54, in test_disabled_unavailable_success_and_other_stages_never_fallback
+    job,calls=self.run_job(request,fail_at=fail_at,catalog=catalog)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_disabled_unavailable_success_and_other_stages_never_fallback (test_claude_fallback.Fallback.test_disabled_unavailable_success_and_other_stages_never_fallback) (request={'architect_model': 'anthropic:claude-test-1', 'architect_fallback_enabled': True, 'architect_fallback_model': 'anthropic:claude-test-1'}, fail_at={0})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 54, in test_disabled_unavailable_success_and_other_stages_never_fallback
+    job,calls=self.run_job(request,fail_at=fail_at,catalog=catalog)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_empty_primary_falls_back (test_claude_fallback.Fallback.test_empty_primary_falls_back)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 67, in test_empty_primary_falls_back
+    job,calls=self.run_job({'architect_fallback_enabled':True,'architect_fallback_model':MODEL},fail_at={0},empty=True)
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_failed_fallback_no_recursion (test_claude_fallback.Fallback.test_failed_fallback_no_recursion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 59, in test_failed_fallback_no_recursion
+    job,calls=self.run_job({'architect_fallback_enabled':True,'architect_fallback_model':MODEL},fail_at={0,1})
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_failed_provider_response_retains_known_usage (test_claude_fallback.Fallback.test_failed_provider_response_retains_known_usage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 82, in test_failed_provider_response_retains_known_usage
+    self.assertEqual(caught.exception.usage['total_tokens'],2)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ProviderError' object has no attribute 'usage'
+
+======================================================================
+ERROR: test_narrow_validation (test_claude_fallback.Fallback.test_narrow_validation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 75, in test_narrow_validation
+    config=fusion.validate_request({'prompt':'task','architect_fallback_enabled':False,'architect_fallback_model':MODEL})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_once_only_failed_openai_architect (test_claude_fallback.Fallback.test_once_only_failed_openai_architect)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 32, in test_once_only_failed_openai_architect
+    job,calls=self.run_job({'architect_fallback_enabled':True,'architect_fallback_model':MODEL}, fail_at={0})
+              ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 23, in run_job
+    jid=jobs.start({'prompt':'task', **request})
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 508, in start
+    config = validate_request(data)
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 34, in validate_request
+    raise ValueError('Expected prompt and optional model names only.')
+ValueError: Expected prompt and optional model names only.
+
+======================================================================
+ERROR: test_claude_architect_only (test_provider_removal.SupportedProviders.test_claude_architect_only)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_provider_removal.py", line 9, in test_claude_architect_only
+    self.assertEqual(fusion.validate_request({'prompt':'task', 'architect_model':'anthropic:claude-test'})['architect_model'], 'anthropic:claude-test')
+                     ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 46, in validate_request
+    architect_selection(data['architect_model'])
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/siegepi10/fusion-model-selector/fusion.py", line 160, in architect_selection
+    raise ValueError('Select an OpenAI architect model.')
+ValueError: Select an OpenAI architect model.
+
+======================================================================
+FAIL: test_catalog_pagination_security (test_anthropic.Anthropic.test_catalog_pagination_security)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 63, in test_catalog_pagination_security
+    self.assertTrue(callable(getattr(fusion, 'fetch_anthropic_models', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_independent_catalog (test_anthropic.Anthropic.test_independent_catalog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 121, in test_independent_catalog
+    self.assertEqual([m['value'] for m in data['architects']], ['openai:default', 'anthropic:'+MODEL])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['openai:default'] != ['openai:default', 'anthropic:claude-test-1']
+
+Second list contains 1 additional elements.
+First extra element 1:
+'anthropic:claude-test-1'
+
+- ['openai:default']
++ ['openai:default', 'anthropic:claude-test-1']
+
+======================================================================
+FAIL: test_key_precedence_and_validation (test_anthropic.Anthropic.test_key_precedence_and_validation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 17, in test_key_precedence_and_validation
+    self.assertTrue(callable(getattr(fusion, 'load_anthropic_key', None)))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_usage_unknown_not_zero (test_anthropic.Anthropic.test_usage_unknown_not_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_anthropic.py", line 112, in test_usage_unknown_not_zero
+    self.assertIsNone(usage['input_tokens'])
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 10 is not None
+
+======================================================================
+FAIL: test_markup_contract (test_claude_fallback.Fallback.test_markup_contract)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 87, in test_markup_contract
+    self.assertIn('id="'+identifier+'"',html)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'id="architect-fallback-enabled"' not found in '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Fusion · Architect / Build / Synthesize / Compare</title>\n  <link rel="stylesheet" href="/style.css">\n  <script src="/app.js" defer></script>\n</head>\n<body>\n<header><p class="eyebrow">LOCAL WORKSPACE / LOCAL + CLOUD BUILDERS</p><h1>Fusion</h1>\n<p>One request. Architecture, implementation, synthesis, and evidence-based comparison.</p></header>\n<main>\n<section class="controls" aria-label="Run configuration">\n<p class="disclosure"><strong>Cloud data disclosure:</strong> Your prompt is sent to OpenAI for architecture. If you select Grok / xAI as builder, your prompt and architecture are also sent to xAI; separate xAI billing applies. Your prompt, architecture, and builder output are then sent to OpenAI for synthesis. The fourth Reasoning / Divergence stage sends your prompt and all prior outputs (architecture, builder, synthesis) to OpenAI using the synthesis model, adding API cost and latency. OpenAI usage may cost money. Ollama building runs locally. Do not submit secrets. API keys stay server-side; outputs are not executed.</p>\n<p class="disclosure">Grok documented IDs shown as unverified are not installed or confirmed accessible and are not ready until a valid server-side xAI key verifies the catalog. An invalid key cannot enable them. Catalog verification does not guarantee generation access or credits.</p>\n<p class="disclosure"><strong>Perplexity cloud Builder:</strong> Selecting Perplexity sends your prompt and architecture to Perplexity with web search enabled. Separate API billing and web search fees apply; a consumer subscription does not include API access. Its answer and sources are sent onward to OpenAI synthesis and the fourth analysis stage. Only the documented Perplexity Sonar model is offered, not third-party models or presets. An unverified choice stays disabled until authenticated catalog access succeeds; credits and generation access remain untested.</p>\n<form id="run-form">\n<div class="models"><label>OpenAI model (synthesis + analysis + default OpenAI architect)<input id="openai-model" name="openai_model" value="gpt-5.5" maxlength="128" required spellcheck="false"></label>\n<div><label for="architect-model">Architect model · OpenAI</label><select id="architect-model" name="architect_model" required disabled aria-describedby="architect-models-status architect-selection"><option value="openai:default">Loading architect models…</option></select><p id="architect-selection">Next architect: OpenAI · cloud</p><p id="architect-models-status" role="status" aria-live="polite">Loading architect models…</p></div>\n<div><label for="ollama-model">Builder model · Ollama local / Grok cloud / Perplexity cloud</label><select id="ollama-model" name="ollama_model" required disabled aria-describedby="models-status builder-selection"><option value="">Loading builder models…</option></select><p id="builder-selection">Next builder: Ollama · local</p>\n<div class="model-tools"><button id="refresh-models" type="button">Refresh models</button><span id="models-status" role="status" aria-live="polite">Loading installed models…</span></div></div></div>\n<label for="prompt">What would you like to build?</label>\n<textarea id="prompt" name="prompt" rows="5" maxlength="12000" required placeholder="Describe the goal, constraints, and expected result…"></textarea>\n<div class="actions"><button id="run" type="submit" disabled>Run Fusion</button><span id="status" role="status" aria-live="polite">Connecting…</span></div>\n<p id="error" role="alert"></p>\n</form>\n</section>\n<section class="panels" aria-label="Model outputs">\n<article class="panel"><h2>01 / Architect <span id="architect-provider">OpenAI</span></h2><p class="stage-status" id="architect-status">Pending</p><p id="architect-usage">Reported tokens: Input unknown · Output unknown · Total unknown</p><p class="stage-error" id="architect-error"></p><pre id="architect-output" tabindex="0"></pre></article>\n<article class="panel"><h2>02 / Builder <span id="builder-provider">Ollama · local</span></h2><p class="stage-status" id="builder-status">Pending</p><p id="builder-usage">Reported tokens: Input unknown · Output unknown · Total unknown</p><p class="stage-error" id="builder-error"></p><pre id="builder-output" tabindex="0"></pre></article>\n<article class="panel"><h2>03 / Synthesis <span id="synthesis-provider">OpenAI</span></h2><p class="stage-status" id="synthesis-status">Pending</p><p id="synthesis-usage">Reported tokens: Input unknown · Output unknown · Total unknown</p><p class="stage-error" id="synthesis-error"></p><pre id="synthesis-output" tabindex="0"></pre></article>\n<article class="panel"><h2>04 / Reasoning / Divergence <span id="analysis-provider">OpenAI</span></h2><p>A user-facing output comparison — not hidden chain of thought. Agreements, evidence-backed differences, hypotheses, synthesis resolutions, and remaining tests.</p><p class="stage-status" id="analysis-status">Pending</p><p id="analysis-usage">Reported tokens: Input unknown · Output unknown · Total unknown</p><p class="stage-error" id="analysis-error"></p><pre id="analysis-output" tabindex="0"></pre></article>\n</section>\n<p id="usage-summary" role="status" aria-live="polite">No run — reported token counts appear after stages finish.</p>\n<p class="footnote">Provider-reported tokens, not authoritative billing. Counts update after each nonstreaming stage finishes; missing or failed stages make coverage partial/incomplete. Cached input and reasoning counts are subsets, not extra tokens. No live estimates, prices, or persistent usage history.</p>\n<p class="footnote">One run at a time. The latest run stays in server memory until the next run or server shutdown. Copy anything you want to keep. Closing this tab does not cancel a run. A failed stage does not erase earlier outputs; later stages continue with an explicit unavailable-stage note.</p>\n</main>\n</body>\n</html>\n'
+
+======================================================================
+FAIL: test_narrow_validation (test_claude_fallback.Fallback.test_narrow_validation) (fields={'openai_model': 'anthropic:claude-test-1'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_claude_fallback.py", line 74, in test_narrow_validation
+    with self.subTest(fields=fields), self.assertRaises(ValueError): fusion.validate_request({'prompt':'task',**fields})
+                                      ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_catalog_only_contains_supported_role_providers (test_provider_removal.SupportedProviders.test_catalog_only_contains_supported_role_providers)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_provider_removal.py", line 16, in test_catalog_only_contains_supported_role_providers
+    self.assertEqual(set(data['providers']), {'ollama','xai','perplexity','anthropic'})
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Items in the second set but not the first:
+'anthropic'
+
+======================================================================
+FAIL: test_no_guessed_claude_fallback (test_provider_removal.SupportedProviders.test_no_guessed_claude_fallback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_provider_removal.py", line 22, in test_no_guessed_claude_fallback
+    self.assertTrue((fusion.ROOT/'setup_anthropic_key.py').exists())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.029s
+
+FAILED (failures=8, errors=15)

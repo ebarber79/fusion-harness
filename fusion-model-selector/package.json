@@ -2,5 +2,5 @@
   "name": "fusion-model-selector",
   "private": true,
   "type": "commonjs",
-  "description": "Package boundary for the dependency-free Fusion UI test harness."
+  "description": "Dependency-free Fusion UI test boundary."
 }

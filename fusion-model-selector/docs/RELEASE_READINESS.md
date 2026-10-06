@@ -1,6 +1,18 @@
 # Release readiness
 
-Verified 2026-10-04 on the deployed local Fusion selector at http://localhost:8766/.
+Historical deployed baseline was verified 2026-10-04 at http://localhost:8766/. The new Claude architect changes below are deployed; provider activation is blocked by an Anthropic credential/authentication error.
+
+## Current Claude change status
+
+- OpenAI remains the default; catalog-verified Claude can be selected as architect or a one-shot backup after OpenAI architect failure. Other stages retain their routing.
+- Latest offline run: 90 Python tests, 83 passed and 7 deferred mobile tests skipped; 8 Node checks passed. JavaScript syntax and git diff whitespace checks passed.
+- Review fixes cover default-model resolution, empty-output fallback, failed-attempt totals and model identity, saved next-run preference precedence, credential control characters, and whole-request generation deadlines.
+- Credential metadata only: saved Anthropic file present/nonempty, owned by the current user, mode 0600; no service environment override present. This does not establish authentication, credits or generation.
+- A completed pre-change run was backed up privately to /home/siegepi10/.local/share/fusion/backups/pre-claude-job.json.
+- Subsequent authorized restart deployed the new Python backend after an idle-job check and private backup; selector service is active/enabled. Live browser confirms one architect dropdown with named GPT entry, no separate backup model field, and disabled Claude fallback while unavailable. Direct Anthropic Models API returned HTTP 400, invalid_request_error, credential/authentication category; raw errors and secrets withheld. Replace the saved API credential through setup_anthropic_key.py and Refresh. Paid Claude generation and live failure fallback remain unverified.
+- Original port 8765 was not changed. No paid requests were made for this Claude verification.
+
+The sections below are historical baseline evidence, not proof of readiness for the new Claude feature.
 
 ## Release scope
 
@@ -34,7 +46,7 @@ The selector service, original Fusion service and Ollama service were active. Th
 
 Initialized a local main-branch Git repository. Added exclusions for credentials, saved runs, logs and generated caches, plus an offline CI workflow and SECURITY.md. A release-candidate scan checked provider-token/private-key patterns and exact configured credential values without displaying them; no matches were found. Private credential files remain outside the repository.
 
-Publication target confirmed by the owner: ebarber79/fusion-harness, branch release/fusion-model-selector. This release is added under fusion-model-selector/ with a repository-root .github/workflows/fusion-model-selector.yml workflow; existing main history and files are preserved. SSH authentication was verified as ebarber79. The existing repository LICENSE remains unchanged. No credentials, saved-run exports or caches are included. Do not use `git add -f` for ignored private files. Push and hosted CI outcomes are reported separately after publication.
+No remote repository was selected or created, and nothing was pushed. Review staged files and choose repository owner/name and visibility before publishing. No license has been assigned; choose an appropriate license before advertising licensed open-source reuse. Do not use `git add -f` for ignored private files.
 
 ## Explicit limitations
 

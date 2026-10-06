@@ -21,3 +21,6 @@ venv/
 node_modules/
 coverage/
 .DS_Store
+
+# Keep session-derived evaluation material local
+docs/FUSION_EFFECTIVENESS_REPORT.md

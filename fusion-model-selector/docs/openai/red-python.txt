@@ -1,0 +1,99 @@
+test_authenticated_bounded_filtered_catalog (test_openai_catalog.OpenAICatalog.test_authenticated_bounded_filtered_catalog) ... ERROR
+test_catalog_independence_and_no_invented_ids (test_openai_catalog.OpenAICatalog.test_catalog_independence_and_no_invented_ids) ... FAIL
+test_failures_and_wall_deadline_sanitized (test_openai_catalog.OpenAICatalog.test_failures_and_wall_deadline_sanitized) ... ERROR
+test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) ...
+  test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-image-1') ... FAIL
+  test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-4o-audio-preview') ... FAIL
+  test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='text-embedding-3-small') ... FAIL
+  test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='o3-deep-research') ... FAIL
+  test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-4o-search-preview') ... FAIL
+
+======================================================================
+ERROR: test_authenticated_bounded_filtered_catalog (test_openai_catalog.OpenAICatalog.test_authenticated_bounded_filtered_catalog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 39, in test_authenticated_bounded_filtered_catalog
+    result = self.fetch({'data': [{'id': name} for name in TEXT + OTHER + TEXT] + [None, {'id': 1}]})
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 27, in fetch
+    result = fusion.fetch_openai_models()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'fusion' has no attribute 'fetch_openai_models'. Did you mean: 'fetch_xai_models'?
+
+======================================================================
+ERROR: test_failures_and_wall_deadline_sanitized (test_openai_catalog.OpenAICatalog.test_failures_and_wall_deadline_sanitized)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 49, in test_failures_and_wall_deadline_sanitized
+    fusion.fetch_openai_models()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'fusion' has no attribute 'fetch_openai_models'. Did you mean: 'fetch_xai_models'?
+
+======================================================================
+FAIL: test_catalog_independence_and_no_invented_ids (test_openai_catalog.OpenAICatalog.test_catalog_independence_and_no_invented_ids)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 63, in test_catalog_independence_and_no_invented_ids
+    self.assertEqual([m['value'] for m in data['architects']], ['openai:default', 'openai:gpt-4o', 'openai:o3', 'anthropic:claude-test'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['openai:default', 'anthropic:claude-test'] != ['openai:default', 'openai:gpt-4o', 'openai:o3', 'anthropic:claude-test']
+
+First differing element 1:
+'anthropic:claude-test'
+'openai:gpt-4o'
+
+Second list contains 2 additional elements.
+First extra element 2:
+'openai:o3'
+
+- ['openai:default', 'anthropic:claude-test']
++ ['openai:default', 'openai:gpt-4o', 'openai:o3', 'anthropic:claude-test']
+
+======================================================================
+FAIL: test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-image-1')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 73, in test_routing_validation_legacy_and_explicit_fallback
+    with self.subTest(name=name), self.assertRaises(ValueError):
+                                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-4o-audio-preview')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 73, in test_routing_validation_legacy_and_explicit_fallback
+    with self.subTest(name=name), self.assertRaises(ValueError):
+                                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='text-embedding-3-small')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 73, in test_routing_validation_legacy_and_explicit_fallback
+    with self.subTest(name=name), self.assertRaises(ValueError):
+                                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='o3-deep-research')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 73, in test_routing_validation_legacy_and_explicit_fallback
+    with self.subTest(name=name), self.assertRaises(ValueError):
+                                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_routing_validation_legacy_and_explicit_fallback (test_openai_catalog.OpenAICatalog.test_routing_validation_legacy_and_explicit_fallback) (name='gpt-4o-search-preview')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_openai_catalog.py", line 73, in test_routing_validation_legacy_and_explicit_fallback
+    with self.subTest(name=name), self.assertRaises(ValueError):
+                                  ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.014s
+
+FAILED (failures=6, errors=2)

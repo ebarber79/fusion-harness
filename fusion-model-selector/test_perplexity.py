@@ -12,6 +12,14 @@ def answer(text='answer'):
     return {'model': MODEL, 'output': [{'type': 'reasoning', 'content': [{'type': 'output_text', 'text': 'PRIVATE'}]}, {'type': 'message', 'role': 'user', 'content': [{'type': 'output_text', 'text': 'NOT ASSISTANT'}]}, {'type': 'message', 'role': 'assistant', 'content': [{'type': 'output_text', 'text': text, 'annotations': [{'type': 'url_citation', 'url': 'https://example.com/a', 'title': 'A'}]}]}, {'type': 'search_results', 'results': [{'id': 2, 'url': 'https://example.org/b', 'title': 'B'}]}], 'usage': {'input_tokens': 10, 'output_tokens': 2, 'total_tokens': 12, 'input_tokens_details': {'cached_tokens': 3}, 'output_tokens_details': {'reasoning_tokens': 1}}}
 
 class Perplexity(unittest.TestCase):
+    def setUp(self):
+        mock = patch('fusion.fetch_openai_models', side_effect=RuntimeError('offline'))
+        mock.start()
+        self.addCleanup(mock.stop)
+        mock = patch('fusion.fetch_anthropic_models', create=True, side_effect=RuntimeError('offline'))
+        mock.start()
+        self.addCleanup(mock.stop)
+
     def test_credentials(self):
         self.assertTrue(callable(getattr(fusion, 'load_perplexity_key', None)))
         with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {'HOME': d}, clear=True):

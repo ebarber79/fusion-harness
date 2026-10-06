@@ -16,28 +16,86 @@ const architectSelect = byId('architect-model');
 let architectNames = new Set(['openai:default']);
 let architectsLoading = true;
 let preferredArchitect = 'openai:default';
+const unsupportedOpenAI = name => /image|audio|realtime|transcrib|tts|whisper|embedding|moderation|deep-research|search|instruct|gpt-oss/i.test(name) ||
+  /^(?:gpt-3\.5-|gpt-4-turbo|gpt-4-0125|gpt-4-1106|o1-preview-|o1-mini-|chatgpt-|babbage-|davinci-|text-|dall-e-)/.test(name) ||
+  ['gpt-4', 'gpt-4-0314', 'gpt-4-0613', 'o1-preview', 'o1-mini'].includes(name);
+const openAITextModel = name => typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$/.test(name) &&
+  !unsupportedOpenAI(name) && (/^(?:gpt-(?:4o|4\.[1-9][0-9]*|[5-9][0-9]*(?:\.[0-9]+)?)(?:-|$)|o[1-9][0-9]*(?:-|$))/.test(name) || name === 'codex-mini-latest');
 function selectArchitect() {
-  if (typeof preferredArchitect === 'string' && /^(?:openai:)?[A-Za-z0-9][A-Za-z0-9_./-]{0,127}$/.test(preferredArchitect) && !architectNames.has(preferredArchitect)) {
+  if (typeof preferredArchitect === 'string' && /^(?:openai:)?[A-Za-z0-9][A-Za-z0-9_./-]{0,127}$/.test(preferredArchitect) && !unsupportedOpenAI(preferredArchitect.replace(/^openai:/, '')) && !architectNames.has(preferredArchitect)) {
     const option = document.createElement('option');
     option.value = preferredArchitect;
-    option.textContent = `OpenAI — ${preferredArchitect.replace(/^openai:/, '')} (restored architect)`;
+    option.textContent = `ChatGPT / OpenAI — ${preferredArchitect.replace(/^openai:/, '')} (restored architect; not catalog verified)`;
     architectSelect.appendChild(option);
     architectNames.add(preferredArchitect);
   }
   architectSelect.value = architectNames.has(preferredArchitect) ? preferredArchitect : '';
   if (!architectSelect.value) byId('architect-models-status').textContent += ' Previous architect unavailable — choose an available architect.';
 }
+let selectedFallback = '';
+const fallbackToggle = byId('architect-fallback-enabled');
+let fallbackNames = new Set();
+let preferredFallback = null;
+let fallbackPreference = null;
+// Saved next-run choices take precedence independently over historical job options.
+const savedArchitectFields = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem('fusion-architect-options'));
+  if (saved && typeof saved.architect === 'string') { preferredArchitect = saved.architect; savedArchitectFields.add('architect'); }
+  if (saved && typeof saved.model === 'string') { preferredFallback = saved.model; savedArchitectFields.add('model'); }
+  if (saved && typeof saved.enabled === 'boolean') { fallbackPreference = saved.enabled; savedArchitectFields.add('enabled'); }
+} catch (_) { /* Storage can be unavailable; job restoration still works. */ }
+function saveArchitectOptions() {
+  try { localStorage.setItem('fusion-architect-options', JSON.stringify({architect: preferredArchitect, model: preferredFallback, enabled: fallbackPreference})); } catch (_) {}
+}
+function selectFallback() {
+  const wanted = preferredFallback === null ? fallbackNames.values().next().value : preferredFallback;
+  selectedFallback = fallbackNames.has(wanted) ? wanted : '';
+  if (preferredFallback === null && wanted) preferredFallback = wanted;
+  const openaiSelected = architectNames.has(architectSelect.value) && !architectSelect.value.startsWith('anthropic:');
+  fallbackToggle.checked = openaiSelected && (fallbackPreference === null ? true : fallbackPreference) && fallbackNames.has(selectedFallback);
+  fallbackToggle.disabled = !fallbackNames.has(selectedFallback) || architectsLoading || !openaiSelected;
+  byId('architect-fallback-status').textContent = 'If the OpenAI architect fails, the same prompt is sent to Claude once, with added latency and API cost. No other stage falls back. ' +
+    (!fallbackNames.size ? 'Claude unavailable: configure an Anthropic API key and Refresh; fallback is disabled.' :
+      !selectedFallback ? 'Previous backup unavailable — fallback is disabled; no model was silently substituted.' :
+      architectSelect.value.startsWith('anthropic:') ? 'Explicit Claude architecture disables fallback and never falls back to OpenAI.' :
+      `Automatic backup: ${selectedFallback.replace('anthropic:', '')}. Catalog verified; generation access and credits are not guaranteed.`);
+}
+fallbackToggle.addEventListener('change', () => { fallbackPreference = fallbackToggle.checked; saveArchitectOptions(); selectFallback(); updateRunButton(); });
+function updateOpenAIArchitectEntry() {
+  const option = Array.from(architectSelect.children).find(choice => choice.value === 'openai:default');
+  if (option) option.textContent = `ChatGPT / OpenAI — ${byId('openai-model').value.trim() || '(enter synthesis/analysis model)'} (default: follows synthesis/analysis)`;
+}
+byId('openai-model').addEventListener('input', () => { updateOpenAIArchitectEntry(); updateRunButton(); });
 function loadArchitects(data) {
   architectNames = new Set(['openai:default']);
+  fallbackNames = new Set();
   architectSelect.replaceChildren();
   const option = document.createElement('option');
   option.value = 'openai:default';
-  option.textContent = 'OpenAI default — uses OpenAI model below';
+  option.textContent = `ChatGPT / OpenAI — ${byId('openai-model').value.trim()} (default: follows synthesis/analysis)`;
   architectSelect.appendChild(option);
-  byId('architect-models-status').textContent = 'OpenAI architecture. The default uses the OpenAI model below; API billing applies.';
+  for (const model of Array.isArray(data.architects) ? data.architects : []) {
+    if (!model || model.verified !== true || model.selectable !== true ||
+        !['openai', 'anthropic'].includes(model.provider) || typeof model.name !== 'string' ||
+        model.value !== model.provider + ':' + model.name || architectNames.has(model.value)) continue;
+    const openai = model.provider === 'openai';
+    if (openai ? !openAITextModel(model.name) : !/^claude-[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(model.name) || /image|audio|embedding|video/i.test(model.name)) continue;
+    architectNames.add(model.value);
+    if (!openai) fallbackNames.add(model.value);
+    const choice = document.createElement('option');
+    choice.value = model.value;
+    choice.textContent = `${openai ? 'ChatGPT / OpenAI' : 'Claude / Anthropic'} · cloud (API billing) — ${model.name} (catalog verified)`;
+    architectSelect.appendChild(choice);
+  }
+  const openaiAvailable = Array.from(architectNames).some(value => value.startsWith('openai:') && value !== 'openai:default');
+  byId('architect-models-status').textContent = 'Choose ChatGPT / OpenAI or Claude in this single architect dropdown. The default GPT entry follows the synthesis/analysis model; explicit models are independent. API billing applies; catalog membership does not guarantee generation access or credits.' +
+    (openaiAvailable ? ' OpenAI text catalog available.' : ' OpenAI catalog unavailable or empty — default and restored OpenAI remain usable; configure a valid server-side key and Refresh.') +
+    (fallbackNames.size ? ' Claude / Anthropic catalog available (architect only).' : ' Anthropic catalog unavailable — no Claude models verified.');
   selectArchitect();
+  selectFallback();
 }
-architectSelect.addEventListener('change', () => { preferredArchitect = architectSelect.value; updateRunButton(); });
+architectSelect.addEventListener('change', () => { preferredArchitect = architectSelect.value; saveArchitectOptions(); selectFallback(); updateRunButton(); });
 
 async function request(path, options = {}) {
   const response = await fetch(path, {cache: 'no-store', ...options});
@@ -64,10 +122,11 @@ function updateBuilderLabels() {
 
 function updateRunButton() {
   updateBuilderLabels();
-  byId('architect-selection').textContent = 'Next architect: OpenAI · cloud (billing)';
+  byId('architect-selection').textContent = architectSelect.value.startsWith('anthropic:') ? 'Next architect: Claude / Anthropic · cloud (API billing)' : 'Next architect: OpenAI · cloud (billing)';
   for (const name of ['architect', 'synthesis', 'analysis']) {
     const stage = lastJob && lastJob.stages.find(s => s.name === name);
-    byId(`${name}-provider`).textContent = stage ? 'OpenAI · ' + (stage.model || lastJob.config.openai_model) : 'OpenAI';
+    byId(`${name}-provider`).textContent = stage ? (stage.provider === 'anthropic' ? 'Claude / Anthropic' : 'OpenAI') + ' · ' + (stage.model || lastJob.config.openai_model) +
+      (stage.fallback_used === true ? ` · fallback used from OpenAI (${stage.original_model || 'unknown model'})` : '') : 'OpenAI';
   }
   button.disabled = submitting || !connected || !validModel() || architectsLoading || !architectNames.has(architectSelect.value) || Boolean(lastJob && lastJob.status === 'running');
 }
@@ -89,6 +148,7 @@ async function refreshModels() {
   if (modelNames.has(modelSelect.value)) preferredModel = modelSelect.value;
   modelsLoading = true;
   architectsLoading = true;
+  fallbackToggle.disabled = true;
   architectSelect.disabled = true;
   byId('architect-models-status').textContent = 'Loading architect models…';
   modelSelect.disabled = true;
@@ -145,6 +205,7 @@ async function refreshModels() {
     modelsLoading = false;
     architectsLoading = false;
     architectSelect.disabled = false;
+    selectFallback();
     modelSelect.disabled = !modelNames.size;
     refreshButton.disabled = false;
     updateRunButton();
@@ -168,8 +229,9 @@ function tokenLine(usage) {
 function renderUsage(job) {
   for (const name of ['architect', 'builder', 'synthesis', 'analysis']) {
     const stage = job && job.stages.find(stage => stage.name === name);
-    const usage = stage && stage.status === 'completed' ? stage.usage : null;
-    byId(`${name}-usage`).textContent = `Reported tokens: ${tokenLine(usage)}`;
+    const usage = stage && ['completed', 'error'].includes(stage.status) ? stage.usage : null;
+    byId(`${name}-usage`).textContent = `Reported tokens: ${tokenLine(usage)}` +
+      (stage && stage.primary_failure ? ` · Failed OpenAI attempt: ${tokenLine(stage.primary_failure.usage)}` : '');
   }
   const usage = job && job.usage;
   if (!usage) {
@@ -179,8 +241,63 @@ function renderUsage(job) {
   const known = usage.known_stages || {};
   byId('usage-summary').textContent = `Reported whole-run tokens (known counts): ${tokenLine(usage)}. ` +
     `Coverage: ${displayCount(usage.complete_stages)}/${displayCount(usage.stage_count)} stages — ${usage.complete === true ? 'complete' : 'partial/incomplete'}. ` +
-    `Known stages: input ${displayCount(known.input_tokens)}/${displayCount(usage.stage_count)}, output ${displayCount(known.output_tokens)}/${displayCount(usage.stage_count)}, total ${displayCount(known.total_tokens)}/${displayCount(usage.stage_count)}.`;
+    `Known stages: input ${displayCount(known.input_tokens)}/${displayCount(usage.stage_count)}, output ${displayCount(known.output_tokens)}/${displayCount(usage.stage_count)}, total ${displayCount(known.total_tokens)}/${displayCount(usage.stage_count)}.` +
+    (usage.failed_attempt_count ? ` Includes known failed-attempt counts (${usage.failed_attempt_count} attempt); failed-attempt coverage ${usage.failed_attempts_complete === true ? 'complete' : 'unknown/partial'}.` : '');
 }
+
+// BEGIN OUTPUT COPY
+const copyStages = ['architect', 'builder', 'synthesis', 'analysis'];
+const copyTexts = new Map();
+function updateCopyButtons() {
+  for (const name of copyStages) {
+    const text = byId(`${name}-output`).textContent;
+    const control = byId(`${name}-copy`);
+    control.disabled = !text;
+    if (copyTexts.get(name) !== text) {
+      control.textContent = 'Copy';
+      byId(`${name}-copy-status`).textContent = '';
+      copyTexts.set(name, text);
+    }
+  }
+}
+function legacyCopyOutput(text) {
+  const active = document.activeElement;
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  try {
+    field.select();
+    return document.execCommand('copy');
+  } finally {
+    field.remove();
+    if (active && active.focus) active.focus({preventScroll: true});
+  }
+}
+for (const name of copyStages) {
+  byId(`${name}-copy`).addEventListener('click', async () => {
+    const text = byId(`${name}-output`).textContent;
+    if (!text) return;
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (_) { /* Try the local compatibility path if permission is denied. */ }
+    if (!copied) {
+      try { copied = legacyCopyOutput(text); } catch (_) { /* Show a truthful error below. */ }
+    }
+    // A new run may have replaced the output while clipboard permission was pending.
+    if (byId(`${name}-output`).textContent !== text) return;
+    byId(`${name}-copy`).textContent = copied ? 'Copied!' : 'Copy';
+    byId(`${name}-copy-status`).textContent = copied ? 'Copied to clipboard.' : 'Copy unavailable — select the text and copy manually.';
+  });
+}
+updateCopyButtons();
+// END OUTPUT COPY
 
 function render(job) {
   renderUsage(job);
@@ -195,13 +312,17 @@ function render(job) {
       byId(`${name}-output`).textContent = '';
     }
   }
-  if (!job) return;
+  if (!job) { updateCopyButtons(); return; }
   if (!loaded) {
     byId('prompt').value = job.config.prompt;
     byId('openai-model').value = job.config.openai_model;
+    updateOpenAIArchitectEntry();
     preferredModel = job.config.ollama_model;
-    preferredArchitect = job.config.architect_model || 'openai:default';
+    if (!savedArchitectFields.has('architect')) preferredArchitect = job.config.architect_model || 'openai:default';
+    if (!savedArchitectFields.has('model') && typeof job.config.architect_fallback_model === 'string') preferredFallback = job.config.architect_fallback_model;
+    if (!savedArchitectFields.has('enabled') && typeof job.config.architect_fallback_enabled === 'boolean') fallbackPreference = job.config.architect_fallback_enabled;
     if (!architectsLoading) selectArchitect();
+    if (!architectsLoading) selectFallback();
     if (!modelsLoading) selectPreferred(null);
     updateRunButton();
   }
@@ -209,9 +330,10 @@ function render(job) {
   for (const stage of job.stages) {
     if (!names.has(stage.name)) continue;
     byId(`${stage.name}-status`).textContent = stage.status;
-    byId(`${stage.name}-error`).textContent = stage.error;
+    byId(`${stage.name}-error`).textContent = (stage.error || '') + (stage.primary_failure ? ' ' + stage.primary_failure.error : '');
     byId(`${stage.name}-output`).textContent = stage.output;
   }
+  updateCopyButtons();
 }
 
 async function poll() {
@@ -257,6 +379,8 @@ form.addEventListener('submit', async event => {
       body: JSON.stringify({prompt: byId('prompt').value,
         openai_model: byId('openai-model').value.trim(),
         ollama_model: modelSelect.value,
+        architect_fallback_enabled: !architectSelect.value.startsWith('anthropic:') && fallbackToggle.checked === true && fallbackNames.has(selectedFallback),
+        ...(fallbackNames.has(selectedFallback) ? {architect_fallback_model: selectedFallback} : {}),
         ...(architectSelect.value === 'openai:default' ? {} : {architect_model: architectSelect.value})})
     });
     lastJob = null;
