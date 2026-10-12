@@ -239,3 +239,27 @@ test('history deletion requires confirmation and active history cannot be delete
   f.setLatest(run('active', 'running')); await f.eval('poll()');
   assert.equal(f.el('history-delete').disabled, true);
 });
+
+test('progress strip mirrors each stage status, and Reset view collapses panels and returns to the active run', async () => {
+  const f = fixture(); await flush();
+  const job = {id: 'p', status: 'partial_failure', config: {prompt: 'x', openai_model: 'gpt-5.5', ollama_model: 'a'}, stages: [
+    {name: 'architect', status: 'completed', output: 'arch'}, {name: 'builder', status: 'error', output: '', error: 'boom'},
+    {name: 'synthesis', status: 'completed', output: 'syn'}, {name: 'analysis', status: 'running', output: ''}]};
+  f.eval(`render(${JSON.stringify(job)})`);
+  assert.equal(f.el('progress-architect').className, 'step is-completed');
+  assert.equal(f.el('progress-builder').className, 'step is-error');
+  assert.equal(f.el('progress-synthesis').className, 'step is-completed');
+  assert.equal(f.el('progress-analysis').className, 'step is-running');
+  assert.equal(f.el('progress-analysis')['aria-current'], 'step');
+  f.eval('render(null)');
+  for (const name of ['architect', 'builder', 'synthesis', 'analysis']) assert.equal(f.el(`progress-${name}`).className, 'step is-pending');
+  await f.eval('refreshHistory()');
+  f.el('history-select').value = 'old'; await f.el('history-select').handlers.change();
+  f.el('architect-expand').handlers.click();
+  assert.equal(f.el('architect-panel').className, 'panel is-expanded');
+  await f.el('history-latest').handlers.click();
+  assert.equal(f.el('history-select').value, '');
+  assert.equal(f.el('architect-output').textContent, 'latest');
+  assert.equal(f.el('architect-panel').className, 'panel');
+  assert.equal(f.el('history-status').textContent, 'Viewing active / latest run.');
+});

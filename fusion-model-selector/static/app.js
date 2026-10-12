@@ -675,6 +675,7 @@ function render(job) {
       byId(`${name}-output`).textContent = '';
     }
   }
+  updateProgress(job);
   if (!job) { updateCopyButtons(); updateReading(job); if (typeof updateSpeech === 'function') updateSpeech(job); return; }
   if (!loaded && viewId === null) {
     byId('prompt').value = job.config.prompt;
@@ -700,6 +701,17 @@ function render(job) {
   updateCopyButtons();
   updateReading(job);
   if (typeof updateSpeech === 'function') updateSpeech(job);
+}
+
+// Top-down progress strip: one chip per stage, same status vocabulary as the per-panel status.
+function updateProgress(job) {
+  for (const name of ['architect', 'builder', 'synthesis', 'analysis']) {
+    const stage = job && job.stages.find(stage => stage.name === name);
+    const step = byId(`progress-${name}`);
+    const status = !job ? 'pending' : stage ? stage.status : 'unavailable';
+    step.className = `step is-${status}`;
+    step.setAttribute('aria-current', status === 'running' ? 'step' : 'false');
+  }
 }
 
 let readingJobId = null;
@@ -782,8 +794,11 @@ async function selectHistory() {
 }
 byId('history-select').addEventListener('change', selectHistory);
 byId('history-refresh').addEventListener('click', refreshHistory);
-byId('history-latest').addEventListener('click', () => {
-  byId('history-select').value = ''; selectHistory();
+// Reset view: leave any saved run, collapse full-width panels, and return to the active or latest run.
+byId('history-latest').addEventListener('click', async () => {
+  byId('history-select').value = '';
+  for (const name of ['architect', 'builder', 'synthesis', 'analysis']) setReading(name, false);
+  await selectHistory();
 });
 byId('history-delete').addEventListener('click', async () => {
   if (!lastJob || ['running', 'storage_error'].includes(lastJob.status)) return;

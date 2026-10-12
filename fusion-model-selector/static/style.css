@@ -88,6 +88,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .panel.is-expanded { grid-column: 1 / -1; }
 .output-empty { padding-top: 8px; }
 .panels { align-items: start; }
+/* Top-down stage progress strip: mirrors each stage's status above the panels (same palette as .stage-status). */
+.stage-progress { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 0; }
+.step { padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.step.is-running { color: #a9ccff; border-color: #45668e; background: #1c304e; }
+.step.is-completed { color: var(--accent); border-color: #367568; }
+.step.is-error, .step.is-storage_error { color: var(--danger); border-color: #865058; }
+.step.is-interrupted { color: #f2ce94; border-color: #826c43; }
 .stage-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); background: #222c3a; border: 1px solid #465670; border-radius: 999px; padding: 3px 9px; margin: 14px 0 3px; text-transform: uppercase; letter-spacing: .06em; font-size: 10px; font-weight: 650; max-width: 100%; overflow-wrap: anywhere; }
 .stage-status::before { content: ""; flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .stage-status.is-pending, .stage-status.is-unavailable { color: var(--muted); background: #222c3a; }
