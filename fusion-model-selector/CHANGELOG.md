@@ -3,6 +3,20 @@
 Application: http://localhost:8766/
 Project: `/home/siegepi10/fusion-model-selector`
 
+## 2026-10-12 — Top-down workspace layout (from the offline prototype)
+
+- The user chose the prototype's top-down workspace over the split console (`~/fusion-prototype/INTEGRATION_SCOPE.md`).
+  Frontend only: no backend, routing, history or speech changes. Partial-failure continuation already existed.
+- Numbered steps: "1 / Define the request", "2 / Choose model roles", "3 / Review the evidence", "4 / Session history".
+  Tagline: "One request. Independent perspectives. A visible synthesis."
+- Stage progress strip (`#stage-progress`) above the panels mirrors each stage status (pending, running, completed,
+  error, interrupted, unavailable) with `aria-current="step"` on the running stage. Live panel titles are kept (user decision).
+- "Active / latest" became **Reset view** (same control ID): it leaves any saved run, collapses full-width panels and
+  returns to the active / latest run. Saved history is untouched.
+- Tests: 4 new markup tests (`test_topdown_ui.js`) and 1 behavior test; the existing heading assertion was updated.
+  83 Node UI and 123 Python tests (7 skipped) pass. Live page checked at 390, 768 and 1280 px: no horizontal overflow,
+  no script errors, saved-run strip states render. Static files only; refresh the browser, no service restart.
+
 ## 2026-10-12 — Read aloud: louder and clearer ElevenLabs voice (variant D)
 
 - User compared five variants and picked D: high-pass 80 Hz, −2 dB at 300 Hz, +3 dB at 3.5 kHz, gentle 2.5:1

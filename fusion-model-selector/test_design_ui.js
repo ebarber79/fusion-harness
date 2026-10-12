@@ -19,7 +19,7 @@ test('request is the first form input with guidance before model configuration',
   assert.ok(form.indexOf('id="prompt"') < form.indexOf('class="models"'));
   assert.match(form, /aria-describedby="prompt-hint"/);
   assert.match(form, /id="prompt-hint"/);
-  assert.match(form, /<h3 class="model-section-title">Model selection<\/h3>/);
+  assert.match(form, /<h3 class="model-section-title">2 \/ Choose model roles<\/h3>/);
   assert.ok(form.indexOf('class="models"') < form.indexOf('id="run"'));
   assert.match(rule('.request-composer'), /margin-bottom:\s*24px/);
 });
