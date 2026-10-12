@@ -1,0 +1,15 @@
+test_rejects_truncated_wav_payload_and_releases_lock (test_piper.PiperExecution.test_rejects_truncated_wav_payload_and_releases_lock) ... FAIL
+
+======================================================================
+FAIL: test_rejects_truncated_wav_payload_and_releases_lock (test_piper.PiperExecution.test_rejects_truncated_wav_payload_and_releases_lock)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/siegepi10/fusion-model-selector/test_piper.py", line 47, in test_rejects_truncated_wav_payload_and_releases_lock
+    with self.assertRaises(speech.SpeechUnavailable):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: SpeechUnavailable not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.044s
+
+FAILED (failures=1)

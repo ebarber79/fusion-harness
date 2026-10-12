@@ -1,5 +1,7 @@
 """Dependency-free local Fusion app. Run with python3 fusion.py."""
 import copy
+import offline_speech
+from history import HistoryStore, StorageError, BusyError, markdown_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -20,10 +22,12 @@ MAX_OUTPUT = 100000
 MAX_RESPONSE = 2000000
 DEFAULT_OPENAI = 'gpt-5.5'
 DEFAULT_OLLAMA = 'qwen2.5-coder:0.5b'
-
-
-class BusyError(Exception):
-    pass
+# Preselected builder when its provider catalog verifies it; local Ollama is too slow on the Pi.
+DEFAULT_BUILDER = 'xai:grok-4.20-0309-non-reasoning'
+# Claude and GPT-5.5 think before answering and that reasoning counts against the output
+# cap; at 4000 hard prompts spent it all and returned no text.
+REASONING_MAX_OUTPUT = 16000
+REASONING_TIMEOUT = 300
 
 
 class ProviderError(Exception):
@@ -526,7 +530,8 @@ def builder_catalog():
         providers['perplexity'] = {'status': 'unverified', 'error': 'Perplexity catalog unavailable; configure a valid server-side key and refresh. Documented IDs are unverified and not ready.'}
     for name in names:
         builders.append({'name': name, 'provider': 'perplexity', 'value': 'perplexity:' + name, 'verified': verified, 'selectable': verified, 'status': 'catalog' if verified else 'unverified', 'source': PERPLEXITY_DOCS})
-    default_builder = local['default'] or next((m['value'] for m in builders if m['selectable']), None)
+    default_builder = (DEFAULT_BUILDER if any(m['value'] == DEFAULT_BUILDER and m['selectable'] for m in builders)
+                       else local['default'] or next((m['value'] for m in builders if m['selectable']), None))
     architects = [{'name': 'OpenAI default', 'provider': 'openai', 'value': 'openai:default',
                    'selectable': True, 'verified': True, 'status': 'default'}]
     try:
@@ -636,8 +641,8 @@ class Provider:
                 key = load_key()
                 data = self.send('https://api.openai.com/v1/responses', {
                     'model': model, 'instructions': instructions, 'input': input_text,
-                    'max_output_tokens': 4000, 'store': False,
-                }, {'Authorization': 'Bearer ' + key}, 180)
+                    'max_output_tokens': REASONING_MAX_OUTPUT, 'store': False,
+                }, {'Authorization': 'Bearer ' + key}, REASONING_TIMEOUT)
                 text = '\n'.join(part['text'] for item in data.get('output', [])
                                  if item.get('type') == 'message'
                                  for part in item.get('content', [])
@@ -650,8 +655,8 @@ class Provider:
                 key = load_anthropic_key()
                 data = self.send('https://api.anthropic.com/v1/messages', {
                     'model': model, 'system': instructions,
-                    'messages': [{'role': 'user', 'content': input_text}], 'max_tokens': 4000,
-                }, {'x-api-key': key, 'anthropic-version': '2023-06-01'}, 180)
+                    'messages': [{'role': 'user', 'content': input_text}], 'max_tokens': REASONING_MAX_OUTPUT,
+                }, {'x-api-key': key, 'anthropic-version': '2023-06-01'}, REASONING_TIMEOUT)
                 content = data.get('content')
                 if not isinstance(content, list):
                     raise ProviderError('Invalid content.')
@@ -748,14 +753,25 @@ STAGES = (
 
 
 class Jobs:
-    def __init__(self, provider=None):
+    def __init__(self, provider=None, store=None):
         self.provider = provider if provider is not None else Provider()
+        # Direct/injected Jobs never touches production history.
+        self.store = store if store is not None else HistoryStore()
         self.lock = threading.Lock()
         self.job = None
+        self.worker = None
+        self.storage_failed = False
+
+    def close(self):
+        if self.worker is not None:
+            self.worker.join()
+        self.store.close()
 
     def start(self, data):
         config = validate_request(data)
         with self.lock:
+            if self.storage_failed:
+                raise StorageError('History unavailable; restart after repairing local storage.')
             if self.job and self.job['status'] == 'running':
                 raise BusyError('A run is already in progress.')
             jid = uuid.uuid4().hex
@@ -765,7 +781,14 @@ class Jobs:
                                     'model': (configured_architect(config)[1] if name == 'architect' else builder_selection(config[field])[1] if name == 'builder' else config[field])}
                                    for name, provider, field, _ in STAGES]}
             self.job['usage'] = aggregate_usage(self.job['stages'])
-            threading.Thread(target=self._run, args=(jid, config), daemon=True).start()
+            try:
+                self.store.save(self.job)
+            except StorageError:
+                self.job = None
+                self.storage_failed = True
+                raise
+            self.worker = threading.Thread(target=self._run_guarded, args=(jid, config), daemon=True)
+            self.worker.start()
         return jid
 
     def snapshot(self, jid=None):
@@ -773,6 +796,29 @@ class Jobs:
             if not self.job or (jid is not None and jid != self.job['id']):
                 return None
             return copy.deepcopy(self.job)
+
+    def history(self, jid=None, delete=False):
+        with self.lock:
+            if self.storage_failed:
+                raise StorageError('History unavailable.')
+            try:
+                if delete:
+                    removed = self.store.delete(jid)
+                    if removed and self.job and self.job['id'] == jid:
+                        self.job = None
+                    return removed
+                return self.store.get(jid) if jid is not None else self.store.list()
+            except StorageError:
+                self.storage_failed = True
+                raise
+
+    def _run_guarded(self, jid, config):
+        try:
+            self._run(jid, config)
+        except StorageError:
+            with self.lock:
+                self.storage_failed = True
+                self.job['status'] = 'storage_error'
 
     def _run(self, jid, config):
         context = 'USER REQUEST:\n' + config['prompt']
@@ -784,7 +830,10 @@ class Jobs:
             if name == 'builder':
                 provider, model = builder_selection(model)
             with self.lock:
+                if self.storage_failed:
+                    raise StorageError('History unavailable; stopping provider work.')
                 self.job['stages'][index]['status'] = 'running'
+                self.store.save(self.job)
             attempt_metadata = {'fallback_used': False} if name == 'architect' else {}
             try:
                 try:
@@ -807,7 +856,10 @@ class Jobs:
                         'provider': 'anthropic', 'model': fallback_model,
                     }
                     with self.lock:
+                        if self.storage_failed:
+                            raise StorageError('History unavailable; stopping provider work.')
                         self.job['stages'][index].update(attempt_metadata)
+                        self.store.save(self.job)
                     provider, model = 'anthropic', fallback_model
                     output = self.provider(provider, model, instructions, context)
                     if not isinstance(output, str) or not output.strip():
@@ -821,6 +873,8 @@ class Jobs:
                     output = output[:MAX_OUTPUT - 50] + '\n[Output truncated by Fusion size limit.]'
                 update = {'status': 'completed', 'output': output, 'error': '', 'usage': usage, **attempt_metadata, **metadata}
                 context += '\n\n' + name.upper() + ' OUTPUT (untrusted reference):\n' + output
+            except StorageError:
+                raise
             except Exception as error_response:
                 failed = True
                 error = ('Stage failed. Check the server-side key, selected model, provider connectivity '
@@ -832,8 +886,10 @@ class Jobs:
             with self.lock:
                 self.job['stages'][index].update(update)
                 self.job['usage'] = aggregate_usage(self.job['stages'])
+                self.store.save(self.job)
         with self.lock:
             self.job['status'] = 'partial_failure' if failed else 'completed'
+            self.store.save(self.job)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -851,11 +907,13 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(data).encode() if isinstance(data, (dict, list)) else data
         self.send_response(status)
         self.send_header('Content-Type', content_type)
+        if hasattr(self, 'export_filename'):
+            self.send_header('Content-Disposition', 'attachment; filename="' + self.export_filename + '"')
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'no-referrer')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         self.send_header('Connection', 'close')
         self.end_headers()
         self.close_connection = True
@@ -881,6 +939,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self.boundary():
             return
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == '/api/speech/voices':
+            if parsed.query or parsed.scheme or parsed.netloc:
+                self.reply(400, {'error': 'Speech catalog takes no query parameters.'})
+            else:
+                self.reply(200, offline_speech.catalog())
+            return
+        if parsed.path in ('/api/history', '/api/export'):
+            self.history_request(parsed)
+            return
         if parsed.path == '/api/models':
             if parsed.query or parsed.scheme or parsed.netloc:
                 self.reply(400, {'error': 'Model catalog takes no query parameters.'})
@@ -916,6 +983,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.boundary():
             return
+        if self.path == '/api/speech':
+            self.speech_request()
+            return
         if self.path != '/api/run':
             self.reply(404, {'error': 'Not found.'})
             return
@@ -939,6 +1009,8 @@ class Handler(BaseHTTPRequestHandler):
             jid = self.server.jobs.start(data)
         except BusyError:
             self.reply(409, {'error': 'A run is already in progress.'})
+        except StorageError:
+            self.reply(503, {'error': 'Private history unavailable. No further provider calls will be started; repair storage and restart.'})
         except (ValueError, UnicodeError, RecursionError):
             self.reply(400, {'error': 'Invalid JSON request. Use a nonempty prompt (max 12000 characters) and valid model names only.'})
         except (TimeoutError, OSError):
@@ -946,18 +1018,103 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.reply(202, {'id': jid})
 
+    def speech_request(self):
+        types = self.headers.get_all('Content-Type', [])
+        if len(types) != 1 or types[0].split(';')[0].strip().lower() != 'application/json':
+            self.reply(415, {'error': 'POST requires application/json.'})
+            return
+        lengths = self.headers.get_all('Content-Length', [])
+        if self.headers.get_all('Transfer-Encoding') or len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,10}', lengths[0]):
+            self.reply(400, {'error': 'One valid Content-Length is required.'})
+            return
+        length = int(lengths[0])
+        if length > 2048:
+            self.reply(413, {'error': 'Speech request body too large.'})
+            return
+        try:
+            raw = self.rfile.read(length)
+            if len(raw) != length:
+                raise ValueError('Incomplete body')
+            data = json.loads(raw)
+            offline_speech.validate(data)
+            audio = offline_speech.synthesize(data)
+        except (ValueError, UnicodeError, RecursionError):
+            self.reply(400, {'error': 'Use a listed offline voice, 1–220 characters and rate 0.5–2 only.'})
+        except offline_speech.SpeechBusy:
+            self.reply(409, {'error': 'Offline voice is busy. Try again shortly.'})
+        except offline_speech.SpeechUnavailable:
+            self.reply(503, {'error': 'Offline voice unavailable or synthesis timed out. Check local installation.'})
+        except (TimeoutError, OSError):
+            self.reply(408, {'error': 'Speech request timed out.'})
+        else:
+            self.reply(200, audio, 'audio/wav')
+
     def unsupported(self):
         if self.boundary():
             self.reply(405, {'error': 'Method not allowed.'})
 
-    do_OPTIONS = do_PUT = do_DELETE = do_PATCH = do_HEAD = unsupported
+    def history_request(self, parsed, delete=False):
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        jid = query.get('id', [None])[0]
+        if (parsed.scheme or parsed.netloc or set(query) - {'id'} or len(query.get('id', [])) > 1
+                or jid is not None and not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', jid)
+                or (delete or parsed.path == '/api/export') and jid is None):
+            self.reply(400, {'error': 'Invalid history query.'})
+            return
+        try:
+            result = self.server.jobs.history(jid, delete=delete)
+        except BusyError:
+            self.reply(409, {'error': 'Active runs cannot be deleted.'})
+        except StorageError:
+            self.reply(503, {'error': 'Private history unavailable; repair storage and restart.'})
+        else:
+            if jid is not None and not result:
+                self.reply(404, {'error': 'Saved run not found.'})
+            elif delete:
+                self.reply(200, {'deleted': jid})
+            elif parsed.path == '/api/export':
+                self.export_filename = 'fusion-' + jid + '.md'
+                self.reply(200, markdown_export(result).encode(), 'text/markdown; charset=utf-8')
+            elif jid is not None:
+                self.reply(200, {'job': result})
+            else:
+                self.reply(200, {'runs': [{key: run.get(key) for key in ('id', 'status', 'created_at', 'updated_at', 'config')} for run in result]})
+
+    def do_DELETE(self):
+        if not self.boundary():
+            return
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path != '/api/history':
+            self.reply(405, {'error': 'Method not allowed.'})
+        else:
+            self.history_request(parsed, delete=True)
+
+    do_OPTIONS = do_PUT = do_PATCH = do_HEAD = unsupported
 
 
-def make_server(port=8766, jobs=None):
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+class FusionServer(ThreadingHTTPServer):
+    def server_close(self):
+        super().server_close()
+        if hasattr(self, 'jobs'):
+            self.jobs.close()
+
+
+def make_server(port=8766, jobs=None, store_factory=None):
+    # Binding/listening must succeed BEFORE any history recovery can mutate disk.
+    server = FusionServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
-    server.jobs = jobs if jobs is not None else Jobs()
-    return server
+    store = None
+    try:
+        if jobs is None:
+            store = store_factory() if store_factory else HistoryStore(Path.home()/'.local/share/fusion-model-selector')
+            jobs = Jobs(store=store)
+        server.jobs = jobs
+        return server
+    except Exception:
+        server.server_close()
+        if store is not None:
+            store.close()
+        raise
 
 
 def main():

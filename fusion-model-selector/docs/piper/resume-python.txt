@@ -1,0 +1,8 @@
+.................................................................sssssss............................................
+----------------------------------------------------------------------
+Ran 116 tests in 3.264s
+
+OK (skipped=7)
+Saved ~/.config/fusion/anthropic.key with file mode 0600 and directory mode 0700.
+Refresh models to verify catalog access; saving alone does not verify credits or generation.
+Key setup failed. Use an interactive terminal and a valid writable credential path.

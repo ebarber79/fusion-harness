@@ -16,6 +16,7 @@ class Analysis(unittest.TestCase):
                 raise RuntimeError('private upstream details')
             return ReportedText(outputs[index], dict(input_tokens=2, output_tokens=3, total_tokens=5))
         jobs = fusion.Jobs(provider)
+        self.addCleanup(jobs.close)
         job = wait(jobs, jobs.start(dict(prompt='original goal', openai_model='synth-model', architect_model='openai:architect-model', ollama_model=builder)))
         return calls, job
 

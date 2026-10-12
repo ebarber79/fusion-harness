@@ -101,15 +101,24 @@ class Anthropic(unittest.TestCase):
             with self.assertRaises(ValueError): fusion.validate_request({'prompt':'task', 'architect_model':'anthropic:'+MODEL})
             self.assertEqual(fusion.validate_request({'prompt':'task'})['openai_model'], fusion.DEFAULT_OPENAI)
 
+    def test_openai_reasoning_has_room_for_visible_text(self):
+        send = MagicMock(return_value={'model':'gpt-test', 'output':[{'type':'message','content':[{'type':'output_text','text':'ok'}]}]})
+        with patch('fusion.load_key', return_value='synthetic-key'):
+            fusion.Provider(send)('openai', 'gpt-test', 'rules', 'context')
+        _, payload, _, timeout = send.call_args.args
+        self.assertEqual(payload['max_output_tokens'], 16000)
+        self.assertEqual(timeout, 300)
+
     def test_messages_text_redaction_metadata_and_usage(self):
         send = MagicMock(return_value={'model':'claude-returned', 'content':[{'type':'thinking','thinking':'hidden'}, {'type':'text','text':'design synthetic-key'}, {'type':'tool_use','text':'tool'}], 'stop_reason':'max_tokens', 'usage':{'input_tokens':10, 'cache_read_input_tokens':3, 'cache_creation_input_tokens':2, 'output_tokens':4}})
         with patch('fusion.load_anthropic_key', return_value='synthetic-key', create=True):
             result = fusion.Provider(send)('anthropic', MODEL, 'system rules', 'user context')
         url, payload, headers, timeout = send.call_args.args
         self.assertEqual(url, 'https://api.anthropic.com/v1/messages')
-        self.assertEqual(payload, {'model':MODEL, 'system':'system rules', 'messages':[{'role':'user','content':'user context'}], 'max_tokens':4000})
+        self.assertEqual(payload, {'model':MODEL, 'system':'system rules', 'messages':[{'role':'user','content':'user context'}], 'max_tokens':16000})
         self.assertEqual(headers, {'x-api-key':'synthetic-key', 'anthropic-version':'2023-06-01'})
-        self.assertEqual(timeout, 180)
+        # Thinking counts against max_tokens; 4000 left hard prompts with no text at all.
+        self.assertEqual(timeout, 300)
         self.assertIn('[REDACTED]', result)
         self.assertIn('token limit', result)
         self.assertNotIn('hidden', result)
@@ -149,6 +158,7 @@ class Anthropic(unittest.TestCase):
             return fusion.ProviderText(args[0]+' output', {'input_tokens':1, 'output_tokens':2, 'total_tokens':3})
         with patch('fusion.fetch_anthropic_models', return_value=CATALOG, create=True):
             jobs=fusion.Jobs(send)
+            self.addCleanup(jobs.close)
             jid=jobs.start({'prompt':'task', 'architect_model':'anthropic:'+MODEL, 'openai_model':'synth', 'ollama_model':'local'})
         for _ in range(200):
             job=jobs.snapshot(jid)

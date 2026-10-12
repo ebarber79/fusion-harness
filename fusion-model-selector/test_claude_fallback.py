@@ -20,6 +20,7 @@ class Fallback(unittest.TestCase):
             return fusion.ProviderText(args[0]+' design', {'input_tokens':1,'output_tokens':2,'total_tokens':3})
         with patch('fusion.fetch_anthropic_models', create=True, return_value=catalog):
             jobs=fusion.Jobs(provider)
+            self.addCleanup(jobs.close)
             jid=jobs.start({'prompt':'task', **request})
             for _ in range(500):
                 job=jobs.snapshot(jid)
@@ -106,6 +107,7 @@ class Fallback(unittest.TestCase):
     def test_no_catalog_or_key_access_when_disabled(self):
         with patch('fusion.fetch_anthropic_models',side_effect=AssertionError('must not call')) as catalog:
             jobs=fusion.Jobs(lambda *args: (_ for _ in ()).throw(fusion.ProviderError('failed')))
+            self.addCleanup(jobs.close)
             jid=jobs.start({'prompt':'task','architect_fallback_enabled':False})
             for _ in range(500):
                 if jobs.snapshot(jid)['status']!='running': break

@@ -78,6 +78,7 @@ class XAI(unittest.TestCase):
                                           ('ollama:qwen:latest', 'ollama', 'qwen:latest')]:
             calls = []
             jobs = fusion.Jobs(lambda *args: calls.append(args) or 'ok')
+            self.addCleanup(jobs.close)
             jid = jobs.start({'prompt': 'task', 'ollama_model': selected})
             for _ in range(200):
                 job = jobs.snapshot(jid)
@@ -136,6 +137,15 @@ class XAI(unittest.TestCase):
         self.assertEqual(sorted(m['name'] for m in cloud), sorted(IDS))
         self.assertTrue(all(m['verified'] and m['selectable'] and m['value'] == 'xai:'+m['name'] for m in cloud))
         self.assertEqual(data['providers']['xai']['status'], 'available')
+
+    def test_default_builder_prefers_verified_cloud_model(self):
+        name = fusion.DEFAULT_BUILDER.split(':', 1)[1]
+        for cloud_fails in [False, True]:
+            with patch('fusion.model_catalog', return_value={'models': [{'name': 'local'}], 'default': 'local'}), patch('fusion.fetch_xai_models', side_effect=RuntimeError('synthetic-key') if cloud_fails else None, return_value={'data': [{'id': name}]}):
+                data = fusion.builder_catalog()
+            # An unverified cloud catalog must not be preselected; the installed-model contract stays.
+            self.assertEqual(data['default_builder'], 'local' if cloud_fails else fusion.DEFAULT_BUILDER)
+            self.assertEqual(data['default'], 'local')
 
     def test_independent_provider_failures_and_honest_fallback(self):
         self.assertTrue(callable(getattr(fusion, 'builder_catalog', None)), 'Combined catalog missing')

@@ -84,7 +84,9 @@ class Perplexity(unittest.TestCase):
             if args[0]=='perplexity':
                 with patch('fusion.load_perplexity_key',return_value='fake'): return fusion.Provider(lambda *a: {**answer(), 'model':'openai/actual-returned'}) (*args)
             return fusion.ProviderText('ok',{'input_tokens':1,'output_tokens':1,'total_tokens':2})
-        jobs=fusion.Jobs(provider); jid=jobs.start({'prompt':'task','ollama_model':'perplexity:'+MODEL})
+        jobs=fusion.Jobs(provider)
+        self.addCleanup(jobs.close)
+        jid=jobs.start({'prompt':'task','ollama_model':'perplexity:'+MODEL})
         for _ in range(200):
             job=jobs.snapshot(jid)
             if job['status']!='running': break
