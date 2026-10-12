@@ -67,7 +67,7 @@ VOICES = {
 # The account-specific voice ID lives in a local file, not in source: ~/.config/elevenlabs/voice_id.
 ELEVENLABS_KEY = Path.home() / '.config/elevenlabs/key'
 ELEVENLABS_VOICE_ID = Path.home() / '.config/elevenlabs/voice_id'
-ELEVENLABS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/{}?output_format=pcm_22050'
+ELEVENLABS_URL = 'https://api.elevenlabs.io/v1/text-to-speech/{}?output_format=pcm_24000'
 CLOUD_VOICES = {
     'elevenlabs-my-voice-brand': ('My Voice – Brand — ElevenLabs cloud', 'en-US'),
 }
@@ -79,6 +79,31 @@ def cloud_configured():
     except OSError:
         return False
 CLOUD_LOCK = threading.Lock()
+
+
+# Voice chain the user picked (variant D, 2026-10-12), shared with the triage briefing: trim rumble and mud,
+# lift consonant presence, gently even out the level, normalise to -16 LUFS. ElevenLabs speech arrives ~-23.
+VOICE_CHAIN = ('highpass=f=80,equalizer=f=300:t=q:w=1:g=-2,equalizer=f=3500:t=q:w=1.2:g=3,'
+               'acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=1,loudnorm=I=-16:TP=-1.5:LRA=9')
+FFMPEG = Path('/usr/bin/ffmpeg')
+
+
+def louder(pcm):
+    """Run 24 kHz mono s16le PCM through VOICE_CHAIN with ffmpeg (-1.5 dBTP ceiling).
+
+    Volume is a nicety: without ffmpeg, or if it fails, the original audio is returned unchanged."""
+    if not FFMPEG.is_file():
+        return pcm
+    fmt = ['-f', 's16le', '-ar', '24000', '-ac', '1']
+    try:
+        result = subprocess.run(
+            [str(FFMPEG), '-hide_banner', '-loglevel', 'error', *fmt, '-i', 'pipe:0',
+             '-af', VOICE_CHAIN, *fmt, 'pipe:1'],
+            input=pcm, capture_output=True, check=True, timeout=20, env={'PATH': '/usr/bin:/bin'})
+    except (OSError, subprocess.SubprocessError):
+        return pcm
+    out = result.stdout
+    return out if out and len(out) % 2 == 0 and len(out) <= MAX_WAV else pcm
 
 
 def cloud_synthesize(voice, text, rate):
@@ -99,9 +124,10 @@ def cloud_synthesize(voice, text, rate):
             pcm = response.read(MAX_WAV)
         if not pcm or len(pcm) % 2:
             raise SpeechUnavailable('Cloud synthesis failed.')
+        pcm = louder(pcm)
         out = io.BytesIO()
         with wave.open(out, 'wb') as wav:
-            wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(22050); wav.writeframes(pcm)
+            wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000); wav.writeframes(pcm)
         return out.getvalue()
     except (OSError, ValueError):
         raise SpeechUnavailable('Cloud synthesis failed or timed out.') from None

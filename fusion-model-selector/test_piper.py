@@ -31,6 +31,7 @@ class CloudSpeech(unittest.TestCase):
             key = Path(temp) / 'key'; key.write_text('test-key\n')
             vid = Path(temp) / 'voice_id'; vid.write_text('TestVoice123\n')
             with patch.object(speech, 'ELEVENLABS_KEY', key), patch.object(speech, 'ELEVENLABS_VOICE_ID', vid), \
+                    patch.object(speech, 'FFMPEG', Path(temp) / 'no-ffmpeg'), \
                     patch('urllib.request.urlopen', return_value=response) as opener, \
                     patch('offline_speech.subprocess.run') as runner:
                 audio = speech.synthesize(self.request)
@@ -40,8 +41,43 @@ class CloudSpeech(unittest.TestCase):
         self.assertEqual(sent.get_header('Xi-api-key'), 'test-key')
         self.assertEqual(json.loads(sent.data)['voice_settings']['speed'], 1.2)
         with wave.open(io.BytesIO(audio), 'rb') as wav:
-            self.assertEqual((wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()), (1, 2, 22050, 500))
+            self.assertEqual((wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()), (1, 2, 24000, 500))
         self.assertFalse(speech.CLOUD_LOCK.locked())
+
+    def test_louder_runs_bounded_loudnorm_and_falls_back_to_original(self):
+        import subprocess, tempfile
+        from unittest.mock import patch
+        import offline_speech as speech
+        pcm = b'\x10\x00' * 100
+        with tempfile.TemporaryDirectory() as temp:
+            fake = Path(temp) / 'ffmpeg'; fake.write_text('')
+            with patch.object(speech, 'FFMPEG', fake), patch('offline_speech.subprocess.run',
+                    return_value=subprocess.CompletedProcess([], 0, stdout=b'\x20\x00' * 100)) as runner:
+                self.assertEqual(speech.louder(pcm), b'\x20\x00' * 100)
+            args = runner.call_args.args[0]
+            self.assertIn(speech.VOICE_CHAIN, args)
+            self.assertIn('loudnorm=I=-16:TP=-1.5', speech.VOICE_CHAIN)
+            self.assertEqual(args.count('24000'), 2)
+            self.assertEqual(runner.call_args.kwargs['timeout'], 20)
+            for failure in [subprocess.TimeoutExpired('ffmpeg', 20), subprocess.CalledProcessError(1, 'ffmpeg'), OSError()]:
+                with patch.object(speech, 'FFMPEG', fake), patch('offline_speech.subprocess.run', side_effect=failure):
+                    self.assertEqual(speech.louder(pcm), pcm)
+            for bad in [b'', b'\x01']:
+                with patch.object(speech, 'FFMPEG', fake), patch('offline_speech.subprocess.run',
+                        return_value=subprocess.CompletedProcess([], 0, stdout=bad)):
+                    self.assertEqual(speech.louder(pcm), pcm)
+            with patch.object(speech, 'FFMPEG', Path(temp) / 'missing'), patch('offline_speech.subprocess.run') as runner:
+                self.assertEqual(speech.louder(pcm), pcm); runner.assert_not_called()
+
+    @unittest.skipUnless(Path('/usr/bin/ffmpeg').is_file(), 'ffmpeg not installed')
+    def test_louder_really_raises_quiet_speech_level(self):
+        import array, math
+        import offline_speech as speech
+        tone = array.array('h', (round(800 * math.sin(i / 7) * (1 + math.sin(i / 900))) for i in range(24000 * 2)))
+        rms = lambda a: math.sqrt(sum(v * v for v in a) / len(a))
+        out = array.array('h', speech.louder(tone.tobytes()))
+        self.assertGreater(rms(out), rms(tone) * 1.5)
+        self.assertLess(max(map(abs, out)), 32767)
 
     def test_missing_key_or_network_error_is_unavailable(self):
         import tempfile, urllib.error
