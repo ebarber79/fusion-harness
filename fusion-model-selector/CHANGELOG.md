@@ -3,6 +3,23 @@
 Application: http://localhost:8766/
 Project: `/home/siegepi10/fusion-model-selector`
 
+## 2026-10-12 — Read aloud: louder and clearer ElevenLabs voice (variant D)
+
+- User compared five variants and picked D: high-pass 80 Hz, −2 dB at 300 Hz, +3 dB at 3.5 kHz, gentle 2.5:1
+  compression, then `loudnorm` I=−16, TP=−1.5, LRA=9 (`VOICE_CHAIN`, shared with the triage briefing).
+- ElevenLabs output raised from `pcm_22050` to `pcm_24000` (44.1 kHz PCM requires the Pro tier).
+- Live: −16.6 LUFS, peak −1.5 dBFS (was −19.7). 123 Python (7 skipped), 78 Node UI tests pass.
+
+## 2026-10-12 — Read aloud: louder ElevenLabs voice
+
+- ElevenLabs speech arrived at about −23 LUFS, noticeably quieter than Piper. Each cloud chunk now passes through
+  ffmpeg `loudnorm` (I=−18, TP=−1.5 dBTP, LRA=11) before WAV wrapping; measured live at −19.7 LUFS, peak −1.5 dBFS,
+  matching the triage briefing level the user approved. Adds ~0.5 s per chunk on the Pi.
+- Volume is best-effort: without `/usr/bin/ffmpeg`, or on timeout (20 s), error or malformed output, the original
+  audio is returned unchanged. Piper and browser voices are unchanged.
+- Tests: mocked loudnorm command/fallback test plus a real-ffmpeg level test (skipped without ffmpeg).
+  123 Python (7 skipped), 78 Node UI tests pass. Only `fusion-model-selector.service` restarted (no active run).
+
 ## 2026-10-11 — Read aloud: opt-in ElevenLabs cloud voice (user's own clone)
 
 - New Voice choice "My Voice – Brand — ElevenLabs cloud" (backend ID `elevenlabs-my-voice-brand`,
