@@ -3,6 +3,64 @@
 Application: http://localhost:8766/
 Project: `/home/siegepi10/fusion-model-selector`
 
+## 2026-10-11 — Read aloud: opt-in ElevenLabs cloud voice (user's own clone)
+
+- New Voice choice "My Voice – Brand — ElevenLabs cloud" (backend ID `elevenlabs-my-voice-brand`,
+  model `eleven_multilingual_v2`; the account's voice ID is read from `~/.config/elevenlabs/voice_id`, not source). It uses the voice's saved
+  ElevenLabs settings (stability 0.65, similarity 0.85); Fusion's speed maps to ElevenLabs speed, clamped 0.7–1.2.
+- **Cloud, not offline:** each chunk's text is sent to api.elevenlabs.io and uses account credits. The dropdown
+  labels it "cloud — sends text to ElevenLabs, uses credits"; it is never auto-selected and never a fallback
+  for Piper or browser voices. Key is read from `~/.config/elevenlabs/key` per request (never sent to the browser).
+- Same `/api/speech` contract (1–220 chars, rate 0.5–2, Host/Origin checks). PCM 22.05 kHz is wrapped as
+  mono 16-bit WAV; one cloud request at a time (409 busy), 45 s timeout, errors return 503.
+- Verification: 121 Python tests (0 failures, 7 skipped) incl. 2 new mocked cloud tests (no network),
+  78 Node UI tests incl. 1 new cloud-label/no-auto-select test. Only `fusion-model-selector.service` restarted
+  (no active run); live `/api/speech` returned a valid 2.9 s WAV in the cloned voice (one paid call).
+  Saved and live-served; not committed or pushed.
+- Follow-up (user request): this voice is now the **default** selection whenever available and no other voice
+  has been chosen in the page; Piper and browser voices remain optional in the same dropdown. If the key is
+  missing, the previous local-voice default applies. The privacy note states the default sends text to ElevenLabs.
+  UI test updated (default, survives reloads, explicit choice kept, keyless fallback); 78 UI + 121 Python pass.
+  Static files only — no service restart.
+
+## 2026-10-10 — Read aloud: pauses after list items and bold label lines
+
+- Verification of the Markdown cleanup against the latest saved run found no leftover Markdown,
+  but Piper read straight through unpunctuated line breaks: "LED / Photodiode / Simple rule"
+  had a 30 ms gap versus 170 ms with periods (measured on live `en_US-lessac-low` audio).
+- `speechText()` now ends bulleted and numbered list items, and whole-line bold labels, with a
+  period unless they already end in punctuation. Other plain text is still unchanged.
+- Latest run: unpunctuated spoken lines fell from 166 to 0 (synthesis) and 42 to 0 (architect).
+- Test seen failing first; Node suite 77/77. Live-served, no restart.
+- Not verified: listening in the real browser (the Windows Chrome needs an SSH tunnel to reach the Pi).
+
+## 2026-10-10 — Read aloud quality: Markdown cleanup, Piper prefetch, volume headroom
+
+- `speechText()` in `static/app.js` turns Markdown into prose before chunking, for all voices.
+  It removes heading, emphasis, list, quote and table symbols; says "Python code block omitted."
+  instead of reading code; turns links into their text and bare URLs into "link to <domain>";
+  and reads arrows as "to". Plain text passes through unchanged.
+- Piper now requests the next chunk as soon as the current one starts playing, so the ~6 s
+  synthesis time overlaps playback instead of causing a silent gap. Each chunk is still
+  requested once; Stop aborts the prefetch; a failed prefetch is reported when its chunk is reached.
+- `piper_worker.py` sets `volume=0.8`. Piper peak-normalizes to full scale, so clips previously
+  peaked at 0 dBFS; live output now peaks at -1.9 dBFS with no full-scale samples.
+- Tests: two new UI tests plus a worker assertion, seen failing first. Full suites: 77/77 Node,
+  117 Python (7 skipped). No restart needed: the worker and `app.js` are loaded per request.
+- Not verified: listening in the real browser.
+
+## 2026-10-10 — Offline Piper voices installed and deployed
+
+- Installed `en_US-lessac-low`, `en_US-ryan-low` and `en_GB-alan-low` (`.onnx` + `.onnx.json`) from
+  Hugging Face `rhasspy/piper-voices` v1.0.0 into `~/.local/share/fusion-piper/voices`. Each model's
+  SHA-256 matched Hugging Face's published hash; hashes are recorded in `docs/PIPER_OFFLINE.md`.
+- Restarted only `fusion-model-selector.service` (no active run). The previous process predated the
+  speech backend, so `/api/speech/voices` had returned 404. `fusion.service` (port 8765) was untouched.
+- Live checks on localhost:8766: all three voices report available, and each returned valid,
+  non-silent 16 kHz mono WAV audio. A 220-character chunk takes about 6 s to synthesize.
+- `test_piper` (6) and `test_speech_ui.js` (23) passed. No code changes, paid calls, commit or push.
+- Not verified: playback through the browser and speaker, and review of each voice's license.
+
 ## 2026-10-06 — GitHub publication verified
 
 - Published current source/tests and prior copy-control documentation to

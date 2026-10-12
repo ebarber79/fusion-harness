@@ -82,6 +82,7 @@ class JobUsage(unittest.TestCase):
                 raise RuntimeError('secret')
             return 'plain string'
         jobs = fusion.Jobs(provider)
+        self.addCleanup(jobs.close)
         job = wait(jobs, jobs.start({'prompt': 'task', 'ollama_model': 'xai:grok-code-fast-1'}))
         self.assertEqual([c[0] for c in calls], ['openai', 'xai', 'openai', 'openai'])
         self.assertIn('usage', job)
@@ -102,6 +103,7 @@ class JobUsage(unittest.TestCase):
     def test_malformed_partial_and_zero_aggregate(self):
         usages = [dict(input_tokens=0, output_tokens=0, total_tokens=0), dict(input_tokens=True, output_tokens=3, total_tokens=float('inf')), dict(input_tokens=5, output_tokens=None, total_tokens='5'), {}]
         jobs = fusion.Jobs(lambda *args: ReportedText('answer', usages.pop(0)))
+        self.addCleanup(jobs.close)
         job = wait(jobs, jobs.start({'prompt': 'task'}))
         self.assertEqual(job.get('usage', {}).get('input_tokens'), 5)
         self.assertEqual(job['usage']['output_tokens'], 3)
@@ -113,6 +115,7 @@ class JobUsage(unittest.TestCase):
 
     def test_complete_usage_survives_output_truncation(self):
         jobs = fusion.Jobs(lambda *args: ReportedText('x' * (fusion.MAX_OUTPUT + 1), dict(input_tokens=0, output_tokens=2, total_tokens=2, cached_input_tokens=0, reasoning_tokens=1)))
+        self.addCleanup(jobs.close)
         job = wait(jobs, jobs.start({'prompt': 'task'}))
         self.assertEqual(job.get('usage', {}).get('total_tokens'), 8)
         self.assertTrue(job['usage']['complete'])
@@ -125,6 +128,7 @@ class JobUsage(unittest.TestCase):
             release.wait(2)
             return ReportedText('answer', dict(input_tokens=2, output_tokens=3, total_tokens=5))
         jobs = fusion.Jobs(provider)
+        self.addCleanup(jobs.close)
         first = jobs.start({'prompt': 'one'})
         self.assertTrue(entered.wait(1))
         state = jobs.snapshot(first)

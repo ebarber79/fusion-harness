@@ -35,6 +35,7 @@ if importlib.util.find_spec('fusion'):
                 calls.append(args)
                 return ['ARCH', 'BUILD', 'FINAL', 'ANALYSIS'][len(calls)-1]
             jobs = fusion.Jobs(provider)
+            self.addCleanup(jobs.close)
             result = self.wait(jobs, jobs.start({'prompt': 'TASK'}))
             self.assertEqual([c[0] for c in calls], ['openai', 'ollama', 'openai', 'openai'])
             self.assertIn('ARCH', calls[1][3])
@@ -54,6 +55,7 @@ if importlib.util.find_spec('fusion'):
                         raise RuntimeError('secret-key-should-never-appear')
                     return 'output-' + str(len(calls))
                 jobs = fusion.Jobs(provider)
+                self.addCleanup(jobs.close)
                 result = self.wait(jobs, jobs.start({'prompt': 'TASK'}))
                 self.assertEqual(len(calls), 4)
                 self.assertEqual(result['status'], 'partial_failure')
@@ -81,6 +83,7 @@ if importlib.util.find_spec('fusion'):
                 release.wait(2)
                 return 'x'
             jobs = fusion.Jobs(provider)
+            self.addCleanup(jobs.close)
             first = jobs.start({'prompt': 'one'})
             self.assertTrue(entered.wait(1))
             with self.assertRaises(fusion.BusyError):
@@ -94,6 +97,7 @@ if importlib.util.find_spec('fusion'):
 
         def test_oversized_output_is_bounded(self):
             jobs = fusion.Jobs(lambda *args: 'x'*200001)
+            self.addCleanup(jobs.close)
             result = self.wait(jobs, jobs.start({'prompt': 'x'}))
             self.assertLessEqual(len(json.dumps(result)), 610000)
 

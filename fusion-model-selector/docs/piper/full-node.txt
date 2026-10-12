@@ -1,0 +1,461 @@
+TAP version 13
+# Subtest: all four panels have accessible small copy controls
+ok 1 - all four panels have accessible small copy controls
+  ---
+  duration_ms: 2.430428
+  type: 'test'
+  ...
+# Subtest: copy controls sit alongside each panel title
+ok 2 - copy controls sit alongside each panel title
+  ---
+  duration_ms: 0.853347
+  type: 'test'
+  ...
+# Subtest: copy exact current output for every stage, with empty/reset lifecycle
+ok 3 - copy exact current output for every stage, with empty/reset lifecycle
+  ---
+  duration_ms: 5.588849
+  type: 'test'
+  ...
+# Subtest: legacy clipboard fallback works without modern API
+ok 4 - legacy clipboard fallback works without modern API
+  ---
+  duration_ms: 2.322704
+  type: 'test'
+  ...
+# Subtest: rejected clipboard falls back and failure offers manual copy without claiming success
+ok 5 - rejected clipboard falls back and failure offers manual copy without claiming success
+  ---
+  duration_ms: 2.072848
+  type: 'test'
+  ...
+# Subtest: request is the first form input with guidance before model configuration
+ok 6 - request is the first form input with guidance before model configuration
+  ---
+  duration_ms: 4.755799
+  type: 'test'
+  ...
+# Subtest: model controls use short role labels with aligned fields and wrapping summaries
+ok 7 - model controls use short role labels with aligned fields and wrapping summaries
+  ---
+  duration_ms: 1.688156
+  type: 'test'
+  ...
+# Subtest: next-run summaries expose full selected IDs without changing historical identity
+ok 8 - next-run summaries expose full selected IDs without changing historical identity
+  ---
+  duration_ms: 6.621959
+  type: 'test'
+  ...
+# Subtest: cloud disclosures collapse natively without hiding the brief safety summary
+ok 9 - cloud disclosures collapse natively without hiding the brief safety summary
+  ---
+  duration_ms: 1.101944
+  type: 'test'
+  ...
+# Subtest: all original controls, metadata, labels and raw output surfaces survive
+ok 10 - all original controls, metadata, labels and raw output surfaces survive
+  ---
+  duration_ms: 6.231656
+  type: 'test'
+  ...
+# Subtest: results precede compact history and footer describes persistent local storage truthfully
+ok 11 - results precede compact history and footer describes persistent local storage truthfully
+  ---
+  duration_ms: 0.666085
+  type: 'test'
+  ...
+# Subtest: fallback settings collapse below the primary model grid without nested availability disclosure
+ok 12 - fallback settings collapse below the primary model grid without nested availability disclosure
+  ---
+  duration_ms: 6.70007
+  type: 'test'
+  ...
+# Subtest: run action is separated with four-stage guidance and visible live status and errors
+ok 13 - run action is separated with four-stage guidance and visible live status and errors
+  ---
+  duration_ms: 1.082999
+  type: 'test'
+  ...
+# Subtest: model layout balances three primary controls with compact status disclosures
+ok 14 - model layout balances three primary controls with compact status disclosures
+  ---
+  duration_ms: 1.759436
+  type: 'test'
+  ...
+# Subtest: responsive CSS contracts prevent intrinsic overflow at phone, tablet and desktop widths
+ok 15 - responsive CSS contracts prevent intrinsic overflow at phone, tablet and desktop widths
+  ---
+  duration_ms: 2.020514
+  type: 'test'
+  ...
+# Subtest: readable output and unified secondary actions include keyboard and reduced-motion access
+ok 16 - readable output and unified secondary actions include keyboard and reduced-motion access
+  ---
+  duration_ms: 0.979145
+  type: 'test'
+  ...
+# Subtest: render maintains distinct stage classes through completed, error, interrupted and reset states
+ok 17 - render maintains distinct stage classes through completed, error, interrupted and reset states
+  ---
+  duration_ms: 6.144006
+  type: 'test'
+  ...
+# Subtest: real history markup is unique, labelled and export is a download
+ok 18 - real history markup is unique, labelled and export is a download
+  ---
+  duration_ms: 4.225475
+  type: 'test'
+  ...
+# Subtest: browse history safely without restoring next-run selections or replacing active job
+ok 19 - browse history safely without restoring next-run selections or replacing active job
+  ---
+  duration_ms: 11.220459
+  type: 'test'
+  ...
+# Subtest: history selection ignores out-of-order results, including selecting the same ID again
+ok 20 - history selection ignores out-of-order results, including selecting the same ID again
+  ---
+  duration_ms: 5.805686
+  type: 'test'
+  ...
+# Subtest: returning to latest invalidates pending historical results and errors
+ok 21 - returning to latest invalidates pending historical results and errors
+  ---
+  duration_ms: 6.223044
+  type: 'test'
+  ...
+# Subtest: only the newest poll may update active state, connection errors or the poll timer
+ok 22 - only the newest poll may update active state, connection errors or the poll timer
+  ---
+  duration_ms: 7.76281
+  type: 'test'
+  ...
+# Subtest: a stale successful poll cannot hide the newest disconnect
+ok 23 - a stale successful poll cannot hide the newest disconnect
+  ---
+  duration_ms: 4.140567
+  type: 'test'
+  ...
+# Subtest: history refresh ignores older list responses and errors
+ok 24 - history refresh ignores older list responses and errors
+  ---
+  duration_ms: 5.553293
+  type: 'test'
+  ...
+# Subtest: history refresh started before a view change cannot overwrite its status
+ok 25 - history refresh started before a view change cannot overwrite its status
+  ---
+  duration_ms: 4.450368
+  type: 'test'
+  ...
+# Subtest: an accepted run switches from history to latest and invalidates pending historical loads
+ok 26 - an accepted run switches from history to latest and invalidates pending historical loads
+  ---
+  duration_ms: 10.053143
+  type: 'test'
+  ...
+# Subtest: deletion invalidates an in-flight reload of the deleted run
+ok 27 - deletion invalidates an in-flight reload of the deleted run
+  ---
+  duration_ms: 11.215088
+  type: 'test'
+  ...
+# Subtest: deletion finishing after navigation cannot replace the new view or its status
+ok 28 - deletion finishing after navigation cannot replace the new view or its status
+  ---
+  duration_ms: 8.192076
+  type: 'test'
+  ...
+# Subtest: an accepted run stays submission-locked until its active job poll settles
+ok 29 - an accepted run stays submission-locked until its active job poll settles
+  ---
+  duration_ms: 3.655503
+  type: 'test'
+  ...
+# Subtest: history deletion requires confirmation and active history cannot be deleted
+ok 30 - history deletion requires confirmation and active history cannot be deleted
+  ---
+  duration_ms: 3.716319
+  type: 'test'
+  ...
+# UI behavior checks passed (providers, Claude architect, usage, four-stage analysis lifecycle, identity, history and reset)
+# Subtest: existing UI behavior checks
+ok 31 - existing UI behavior checks
+  ---
+  duration_ms: 59.913204
+  type: 'test'
+  ...
+# Subtest: reload: saved architect overrides conflicting historical architect only
+ok 32 - reload: saved architect overrides conflicting historical architect only
+  ---
+  duration_ms: 4.327977
+  type: 'test'
+  ...
+# Subtest: reload: saved fallback model overrides conflicting historical model only
+ok 33 - reload: saved fallback model overrides conflicting historical model only
+  ---
+  duration_ms: 3.422592
+  type: 'test'
+  ...
+# Subtest: reload: saved disabled fallback overrides historical enabled only
+ok 34 - reload: saved disabled fallback overrides historical enabled only
+  ---
+  duration_ms: 5.426606
+  type: 'test'
+  ...
+# Subtest: reload: all saved next-run preferences override historical options
+ok 35 - reload: all saved next-run preferences override historical options
+  ---
+  duration_ms: 5.939503
+  type: 'test'
+  ...
+# Subtest: reload: absent saved preferences restore legacy historical options
+ok 36 - reload: absent saved preferences restore legacy historical options
+  ---
+  duration_ms: 4.641223
+  type: 'test'
+  ...
+# Subtest: reload: empty saved preferences restore legacy historical options
+ok 37 - reload: empty saved preferences restore legacy historical options
+  ---
+  duration_ms: 7.644734
+  type: 'test'
+  ...
+# Subtest: markup has one architect dropdown, named GPT entry, and no backup selector
+ok 38 - markup has one architect dropdown, named GPT entry, and no backup selector
+  ---
+  duration_ms: 0.507453
+  type: 'test'
+  ...
+# Subtest: reading controls wire native click handlers without submitting the form
+ok 39 - reading controls wire native click handlers without submitting the form
+  ---
+  duration_ms: 1.912864
+  type: 'test'
+  ...
+# Subtest: all panels start compact with accessible guidance and disabled full-width controls
+ok 40 - all panels start compact with accessible guidance and disabled full-width controls
+  ---
+  duration_ms: 2.657987
+  type: 'test'
+  ...
+# Subtest: idle reset and in-flight states never imply completed output
+ok 41 - idle reset and in-flight states never imply completed output
+  ---
+  duration_ms: 4.502776
+  type: 'test'
+  ...
+# Subtest: error empty outputs show truthful guidance
+ok 42 - error empty outputs show truthful guidance
+  ---
+  duration_ms: 1.949921
+  type: 'test'
+  ...
+# Subtest: interrupted empty outputs show truthful guidance
+ok 43 - interrupted empty outputs show truthful guidance
+  ---
+  duration_ms: 3.846025
+  type: 'test'
+  ...
+# Subtest: storage_error empty outputs show truthful guidance
+ok 44 - storage_error empty outputs show truthful guidance
+  ---
+  duration_ms: 1.551451
+  type: 'test'
+  ...
+# Subtest: completed empty outputs show truthful guidance
+ok 45 - completed empty outputs show truthful guidance
+  ---
+  duration_ms: 1.366188
+  type: 'test'
+  ...
+# Subtest: completed raw output expands independently, persists on polling, collapses on new view/reset
+ok 46 - completed raw output expands independently, persists on polling, collapses on new view/reset
+  ---
+  duration_ms: 2.55243
+  type: 'test'
+  ...
+# Subtest: legacy history keeps missing stages compact and preserved failed outputs readable
+ok 47 - legacy history keeps missing stages compact and preserved failed outputs readable
+  ---
+  duration_ms: 3.259811
+  type: 'test'
+  ...
+# Subtest: Piper catalog augments browser choices, labels unavailable models, and works without Web Speech
+ok 48 - Piper catalog augments browser choices, labels unavailable models, and works without Web Speech
+  ---
+  duration_ms: 23.180243
+  type: 'test'
+  ...
+# Subtest: Piper uses bounded same-origin audio chunks with true playing, pause/resume, cleanup and complete reading
+ok 49 - Piper uses bounded same-origin audio chunks with true playing, pause/resume, cleanup and complete reading
+  ---
+  duration_ms: 6.962131
+  type: 'test'
+  ...
+# Subtest: Piper skips silent whitespace chunks instead of submitting invalid requests
+ok 50 - Piper skips silent whitespace chunks instead of submitting invalid requests
+  ---
+  duration_ms: 7.678124
+  type: 'test'
+  ...
+# Subtest: actual read aloud disclosure explains Piper offline neural installation and local server audio
+ok 51 - actual read aloud disclosure explains Piper offline neural installation and local server audio
+  ---
+  duration_ms: 0.702308
+  type: 'test'
+  ...
+# Subtest: Piper pause/end race resumes following chunk without replay or null audio
+ok 52 - Piper pause/end race resumes following chunk without replay or null audio
+  ---
+  duration_ms: 4.79317
+  type: 'test'
+  ...
+# Subtest: Piper stop cancels pending request and rejects stale fetch/audio callbacks across render changes
+ok 53 - Piper stop cancels pending request and rejects stale fetch/audio callbacks across render changes
+  ---
+  duration_ms: 14.0458
+  type: 'test'
+  ...
+# Subtest: Piper HTTP/audio errors fail truthfully and allow retry without automatic cloud fallback
+ok 54 - Piper HTTP/audio errors fail truthfully and allow retry without automatic cloud fallback
+  ---
+  duration_ms: 26.187143
+  type: 'test'
+  ...
+# Subtest: actual HTML has four labelled non-submit read buttons and global accessible controls
+ok 55 - actual HTML has four labelled non-submit read buttons and global accessible controls
+  ---
+  duration_ms: 1.185593
+  type: 'test'
+  ...
+# Subtest: voices prefer local, label privacy, and late voices enable only nonempty output
+ok 56 - voices prefer local, label privacy, and late voices enable only nonempty output
+  ---
+  duration_ms: 14.444621
+  type: 'test'
+  ...
+# Subtest: each stage starts on click with selected voice/speed, onstart truth, and lossless bounded chunks
+ok 57 - each stage starts on click with selected voice/speed, onstart truth, and lossless bounded chunks
+  ---
+  duration_ms: 9.738212
+  type: 'test'
+  ...
+# Subtest: pause/resume and stop cancel queued work and ignore stale callbacks after replacement
+ok 58 - pause/resume and stop cancel queued work and ignore stale callbacks after replacement
+  ---
+  duration_ms: 2.565337
+  type: 'test'
+  ...
+# Subtest: unsupported native pause immediately cancels audio but preserves a resumable session
+ok 59 - unsupported native pause immediately cancels audio but preserves a resumable session
+  ---
+  duration_ms: 1.807195
+  type: 'test'
+  ...
+# Subtest: fallback resume replays only the interrupted bounded chunk and loses no following text
+ok 60 - fallback resume replays only the interrupted bounded chunk and loses no following text
+  ---
+  duration_ms: 2.555412
+  type: 'test'
+  ...
+# Subtest: fallback ignores cancelled start/end/error callbacks synchronously and after resume
+ok 61 - fallback ignores cancelled start/end/error callbacks synchronously and after resume
+  ---
+  duration_ms: 4.956005
+  type: 'test'
+  ...
+# Subtest: fallback does not replay a chunk that completed while native pause was requested
+ok 62 - fallback does not replay a chunk that completed while native pause was requested
+  ---
+  duration_ms: 1.577506
+  type: 'test'
+  ...
+# Subtest: eSpeak pause uses cancel/replay without native pause or resume that can wedge Linux speech
+ok 63 - eSpeak pause uses cancel/replay without native pause or resume that can wedge Linux speech
+  ---
+  duration_ms: 1.731083
+  type: 'test'
+  ...
+# Subtest: successful native pause resumes the same utterance without cancellation or replay
+ok 64 - successful native pause resumes the same utterance without cancellation or replay
+  ---
+  duration_ms: 1.75601
+  type: 'test'
+  ...
+# Subtest: render integrates speech; unchanged polls keep playback, changed job/output and pagehide stop
+ok 65 - render integrates speech; unchanged polls keep playback, changed job/output and pagehide stop
+  ---
+  duration_ms: 6.778942
+  type: 'test'
+  ...
+# Subtest: speak exceptions and utterance errors fail truthfully, allow retry, ignore stale errors
+ok 66 - speak exceptions and utterance errors fail truthfully, allow retry, ignore stale errors
+  ---
+  duration_ms: 1.586359
+  type: 'test'
+  ...
+# Subtest: voice loss and voice/speed changes stop current audio without silently switching remote
+ok 67 - voice loss and voice/speed changes stop current audio without silently switching remote
+  ---
+  duration_ms: 4.611148
+  type: 'test'
+  ...
+# Subtest: default local voice matches browser language rather than first alphabetic voice
+ok 68 - default local voice matches browser language rather than first alphabetic voice
+  ---
+  duration_ms: 1.264076
+  type: 'test'
+  ...
+# Subtest: speech controls have wrapping responsive layout and compact stage buttons
+ok 69 - speech controls have wrapping responsive layout and compact stage buttons
+  ---
+  duration_ms: 0.513286
+  type: 'test'
+  ...
+# Subtest: unsupported browsers and absent controls degrade safely
+ok 70 - unsupported browsers and absent controls degrade safely
+  ---
+  duration_ms: 2.094979
+  type: 'test'
+  ...
+# Subtest: usage overview labels partial known totals without hiding detailed coverage or failed attempts
+ok 71 - usage overview labels partial known totals without hiding detailed coverage or failed attempts
+  ---
+  duration_ms: 6.29012
+  type: 'test'
+  ...
+# Subtest: usage overview resets to truthful idle and legacy unknown states
+ok 72 - usage overview resets to truthful idle and legacy unknown states
+  ---
+  duration_ms: 1.725509
+  type: 'test'
+  ...
+# Subtest: history puts view status before grouped actions and collapses the preserved prompt
+ok 73 - history puts view status before grouped actions and collapses the preserved prompt
+  ---
+  duration_ms: 0.618992
+  type: 'test'
+  ...
+# Subtest: usage overview preserves valid zero, unknown invalid counts and stable repeated polling
+ok 74 - usage overview preserves valid zero, unknown invalid counts and stable repeated polling
+  ---
+  duration_ms: 2.916566
+  type: 'test'
+  ...
+# Subtest: usage is compact with native stage details and always-visible accounting limits
+ok 75 - usage is compact with native stage details and always-visible accounting limits
+  ---
+  duration_ms: 1.078851
+  type: 'test'
+  ...
+1..75
+# tests 75
+# suites 0
+# pass 75
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 465.854378

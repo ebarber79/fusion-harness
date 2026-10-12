@@ -87,6 +87,7 @@ class OpenAICatalog(unittest.TestCase):
             if selected is not None: request['architect_model'] = selected
             with patch('fusion.fetch_anthropic_models', return_value={'data':[{'id':'claude-test'}]}):
                 jobs = fusion.Jobs(send)
+                self.addCleanup(jobs.close)
                 jid = jobs.start(request)
                 for _ in range(500):
                     job = jobs.snapshot(jid)

@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: Piper catalog augments browser choices, labels unavailable models, and works without Web Speech
+ok 1 - Piper catalog augments browser choices, labels unavailable models, and works without Web Speech
+  ---
+  duration_ms: 42.226183
+  type: 'test'
+  ...
+# Subtest: Piper uses bounded same-origin audio chunks with true playing, pause/resume, cleanup and complete reading
+ok 2 - Piper uses bounded same-origin audio chunks with true playing, pause/resume, cleanup and complete reading
+  ---
+  duration_ms: 9.939369
+  type: 'test'
+  ...
+# Subtest: Piper pause/end race resumes following chunk without replay or null audio
+ok 3 - Piper pause/end race resumes following chunk without replay or null audio
+  ---
+  duration_ms: 11.035776
+  type: 'test'
+  ...
+# Subtest: Piper stop cancels pending request and rejects stale fetch/audio callbacks across render changes
+ok 4 - Piper stop cancels pending request and rejects stale fetch/audio callbacks across render changes
+  ---
+  duration_ms: 16.101471
+  type: 'test'
+  ...
+# Subtest: Piper HTTP/audio errors fail truthfully and allow retry without automatic cloud fallback
+ok 5 - Piper HTTP/audio errors fail truthfully and allow retry without automatic cloud fallback
+  ---
+  duration_ms: 8.775516
+  type: 'test'
+  ...
+# Subtest: actual HTML has four labelled non-submit read buttons and global accessible controls
+ok 6 - actual HTML has four labelled non-submit read buttons and global accessible controls
+  ---
+  duration_ms: 0.958182
+  type: 'test'
+  ...
+# Subtest: voices prefer local, label privacy, and late voices enable only nonempty output
+ok 7 - voices prefer local, label privacy, and late voices enable only nonempty output
+  ---
+  duration_ms: 3.015384
+  type: 'test'
+  ...
+# Subtest: each stage starts on click with selected voice/speed, onstart truth, and lossless bounded chunks
+ok 8 - each stage starts on click with selected voice/speed, onstart truth, and lossless bounded chunks
+  ---
+  duration_ms: 7.737944
+  type: 'test'
+  ...
+# Subtest: pause/resume and stop cancel queued work and ignore stale callbacks after replacement
+ok 9 - pause/resume and stop cancel queued work and ignore stale callbacks after replacement
+  ---
+  duration_ms: 2.199444
+  type: 'test'
+  ...
+# Subtest: unsupported native pause immediately cancels audio but preserves a resumable session
+ok 10 - unsupported native pause immediately cancels audio but preserves a resumable session
+  ---
+  duration_ms: 2.132943
+  type: 'test'
+  ...
+# Subtest: fallback resume replays only the interrupted bounded chunk and loses no following text
+ok 11 - fallback resume replays only the interrupted bounded chunk and loses no following text
+  ---
+  duration_ms: 1.630916
+  type: 'test'
+  ...
+# Subtest: fallback ignores cancelled start/end/error callbacks synchronously and after resume
+ok 12 - fallback ignores cancelled start/end/error callbacks synchronously and after resume
+  ---
+  duration_ms: 1.550266
+  type: 'test'
+  ...
+# Subtest: fallback does not replay a chunk that completed while native pause was requested
+ok 13 - fallback does not replay a chunk that completed while native pause was requested
+  ---
+  duration_ms: 1.256744
+  type: 'test'
+  ...
+# Subtest: eSpeak pause uses cancel/replay without native pause or resume that can wedge Linux speech
+ok 14 - eSpeak pause uses cancel/replay without native pause or resume that can wedge Linux speech
+  ---
+  duration_ms: 1.287243
+  type: 'test'
+  ...
+# Subtest: successful native pause resumes the same utterance without cancellation or replay
+ok 15 - successful native pause resumes the same utterance without cancellation or replay
+  ---
+  duration_ms: 3.371575
+  type: 'test'
+  ...
+# Subtest: render integrates speech; unchanged polls keep playback, changed job/output and pagehide stop
+ok 16 - render integrates speech; unchanged polls keep playback, changed job/output and pagehide stop
+  ---
+  duration_ms: 5.212291
+  type: 'test'
+  ...
+# Subtest: speak exceptions and utterance errors fail truthfully, allow retry, ignore stale errors
+ok 17 - speak exceptions and utterance errors fail truthfully, allow retry, ignore stale errors
+  ---
+  duration_ms: 1.392819
+  type: 'test'
+  ...
+# Subtest: voice loss and voice/speed changes stop current audio without silently switching remote
+ok 18 - voice loss and voice/speed changes stop current audio without silently switching remote
+  ---
+  duration_ms: 2.277316
+  type: 'test'
+  ...
+# Subtest: default local voice matches browser language rather than first alphabetic voice
+ok 19 - default local voice matches browser language rather than first alphabetic voice
+  ---
+  duration_ms: 1.048091
+  type: 'test'
+  ...
+# Subtest: speech controls have wrapping responsive layout and compact stage buttons
+ok 20 - speech controls have wrapping responsive layout and compact stage buttons
+  ---
+  duration_ms: 0.424414
+  type: 'test'
+  ...
+# Subtest: unsupported browsers and absent controls degrade safely
+ok 21 - unsupported browsers and absent controls degrade safely
+  ---
+  duration_ms: 1.896476
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 211.270435

@@ -1,0 +1,11 @@
+test_fixed_installed_catalog (test_piper.PiperCatalog.test_fixed_installed_catalog) ... ok
+test_local_subprocess_wav_cleanup_timeout_and_exclusive_lock (test_piper.PiperExecution.test_local_subprocess_wav_cleanup_timeout_and_exclusive_lock) ... ok
+test_rejects_truncated_wav_payload_and_releases_lock (test_piper.PiperExecution.test_rejects_truncated_wav_payload_and_releases_lock) ... ok
+test_catalog_and_synthesis_share_existing_host_origin_security (test_piper.PiperHTTP.test_catalog_and_synthesis_share_existing_host_origin_security) ... ok
+test_validates_bounded_fixed_voice_requests (test_piper.PiperSynthesis.test_validates_bounded_fixed_voice_requests) ... ok
+test_worker_limits_onnx_threads_and_writes_local_audio (test_piper.PiperWorker.test_worker_limits_onnx_threads_and_writes_local_audio) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.638s
+
+OK

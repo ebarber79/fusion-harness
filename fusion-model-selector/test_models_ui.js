@@ -9,6 +9,7 @@ class Element {
   replaceChildren(...children) { this.children = children; this._value = children[0]?.value || ''; }
   appendChild(child) { this.children.push(child); if (!this._value) this._value = child.value; }
   addEventListener(name, callback) { this.handlers[name] = callback; }
+  setAttribute(name, value) { this[name] = value; }
 }
 const markup = fs.readFileSync('static/index.html', 'utf8');
 const markupIds = new Set([...markup.matchAll(/id="([^"]+)"/g)].map(m => m[1]));

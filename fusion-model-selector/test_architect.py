@@ -28,6 +28,7 @@ class Architect(unittest.TestCase):
             request = {'prompt': 'task', 'openai_model': 'synth', 'ollama_model': 'local'}
             if selection is not None: request['architect_model'] = selection
             jobs = fusion.Jobs(send)
+            self.addCleanup(jobs.close)
             jid = jobs.start(request)
             for _ in range(200):
                 job = jobs.snapshot(jid)
